@@ -1,289 +1,182 @@
-// src/context/AppDataContext.js  (REPLACE)
-import React, { createContext, useContext, useMemo, useState } from "react";
+// src/context/AppDataContext.js
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GAS_URL } from "../config";
 
 const AppDataContext = createContext(null);
 
-const STORAGE_SESSION = "@church_saas_session_v2";
+const STORAGE_KEYS = {
+  TENANT: "@church_saas_tenant_v1",
+  CONFIG: "@church_saas_config_v1",
+  MEMBERS: "@church_saas_members_v1",
+};
 
-function nowISO() {
-  return new Date().toISOString();
-}
+const DEFAULT_CONFIG = {
+  churchName: "Congregate",
+  address: "",
+  logoUrl: "",
+  youtubeId: "",
+  donationLinks: [],
+};
 
-function isIsoInFuture(iso) {
-  const s = String(iso || "").trim();
-  if (!s) return false;
-  const t = new Date(s).getTime();
-  if (Number.isNaN(t)) return false;
-  return t > Date.now();
+function uid() {
+  return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
 
 async function callApi({ resource, action, method = "GET", params = {}, body }) {
+  if (!GAS_URL || !String(GAS_URL).includes("/macros/s/") || !String(GAS_URL).includes("/exec")) {
+    throw new Error("GAS_URL not set (local mode).");
+  }
+
   const url = new URL(GAS_URL);
   url.searchParams.set("resource", resource);
   url.searchParams.set("action", action);
+
   Object.entries(params || {}).forEach(([k, v]) => {
     if (v !== undefined && v !== null && String(v).length) url.searchParams.set(k, String(v));
   });
 
-  const res = await fetch(url.toString(), {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const init = method === "POST" ? { method: "POST", body: JSON.stringify(body || {}) } : { method: "GET" };
 
+  const res = await fetch(url.toString(), init);
   const text = await res.text();
+
   let json;
   try {
     json = JSON.parse(text);
   } catch {
-    throw new Error(text?.slice(0, 200) || "Invalid response");
+    throw new Error(text?.slice(0, 200) || "Invalid JSON from GAS");
   }
-  if (!json.ok) throw new Error(json.error || "Request failed");
+
+  if (!json.ok) throw new Error(json.error || "GAS request failed");
   return json.data;
 }
 
 export function AppDataProvider({ children }) {
-  const [tenant, setTenant] = useState(null);
-  const [user, setUser] = useState(null);
-
-  const [config, setConfig] = useState(null);
-  const [donations, setDonations] = useState([]);
-  const [events, setEvents] = useState([]);
+  const [tenantCode, setTenantCodeState] = useState("");
+  const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [members, setMembers] = useState([]);
+  const [ready, setReady] = useState(false);
 
-  const churchId = tenant?.churchId || null;
+  const apiEnabled = useMemo(() => !!GAS_URL && String(GAS_URL).includes("/exec"), []);
 
-  const canUseApp = useMemo(() => {
-    if (!tenant) return false;
-    const status = String(tenant.planStatus || "").toUpperCase();
-    if (status === "ACTIVE") return true;
-    if (status === "TRIAL") return isIsoInFuture(tenant.trialEndsAt);
-    return false;
-  }, [tenant]);
-
-  // ---- SESSION ----
-  async function restoreSession() {
-    const raw = await AsyncStorage.getItem(STORAGE_SESSION);
-    if (!raw) return null;
-    const s = JSON.parse(raw);
-    if (s?.tenant && s?.user) {
-      setTenant(s.tenant);
-      setUser(s.user);
-      return s;
-    }
-    return null;
-  }
-
-  async function saveSession(nextTenant, nextUser) {
-    setTenant(nextTenant);
-    setUser(nextUser);
-    await AsyncStorage.setItem(
-      STORAGE_SESSION,
-      JSON.stringify({ tenant: nextTenant, user: nextUser, savedAt: nowISO() })
-    );
-  }
-
-  async function clearSession() {
-    setTenant(null);
-    setUser(null);
-    setConfig(null);
-    setDonations([]);
-    setEvents([]);
-    setMembers([]);
-    await AsyncStorage.removeItem(STORAGE_SESSION);
-  }
-
-  // ---- AUTH / TENANT ----
-  async function getTenantByInviteCode(inviteCode) {
-    return callApi({
-      resource: "tenants",
-      action: "getByInviteCode",
-      method: "GET",
-      params: { inviteCode },
-    });
-  }
-
-  async function createTenant({ churchName, ownerEmail }) {
-    // 14-day trial by default
-    const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-    return callApi({
-      resource: "tenants",
-      action: "create",
-      method: "POST",
-      body: {
-        churchName,
-        ownerEmail,
-        planName: "Standard",
-        planPriceUSD: 45,
-        planStatus: "TRIAL",
-        trialEndsAt,
-        billingProvider: "PAYPAL",
-      },
-    });
-  }
-
-  async function signupUser({ inviteCode, churchId, role, name, phone, email, password }) {
-    return callApi({
-      resource: "users",
-      action: "signup",
-      method: "POST",
-      body: { inviteCode, churchId, role, name, phone, email, password },
-    });
-  }
-
-  async function login({ inviteCode, identifier, password }) {
-    const data = await callApi({
-      resource: "users",
-      action: "login",
-      method: "POST",
-      body: { inviteCode, identifier, password },
-    });
-
-    await saveSession(data.tenant, data.user);
-
-    // Load church data right away
-    await refreshChurchData(data.tenant.churchId);
-
-    return data;
-  }
-
-  // ---- CHURCH DATA ----
-  async function refreshChurchData(chId = churchId) {
-    if (!chId) return;
-
-    const [cfg, dons, evts] = await Promise.all([
-      callApi({ resource: "config", action: "get", method: "GET", params: { churchId: chId } }),
-      callApi({ resource: "donations", action: "list", method: "GET", params: { churchId: chId } }),
-      callApi({ resource: "events", action: "list", method: "GET", params: { churchId: chId } }),
+  async function loadLocal() {
+    const [t, c, m] = await Promise.all([
+      AsyncStorage.getItem(STORAGE_KEYS.TENANT),
+      AsyncStorage.getItem(STORAGE_KEYS.CONFIG),
+      AsyncStorage.getItem(STORAGE_KEYS.MEMBERS),
     ]);
 
-    setConfig(cfg);
-    setDonations(Array.isArray(dons) ? dons : []);
-    setEvents(Array.isArray(evts) ? evts : []);
+    if (t) setTenantCodeState(t);
+    if (c) setConfig(JSON.parse(c));
+    if (m) setMembers(JSON.parse(m));
   }
 
-  // ---- ADMIN: USERS ----
-  async function refreshMembers(chId = churchId) {
-    if (!chId) return;
-    const list = await callApi({
-      resource: "users",
-      action: "list",
-      method: "GET",
-      params: { churchId: chId },
-    });
-    setMembers(Array.isArray(list) ? list : []);
+  async function saveLocal(nextTenant, nextConfig, nextMembers) {
+    await Promise.all([
+      AsyncStorage.setItem(STORAGE_KEYS.TENANT, nextTenant || ""),
+      AsyncStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(nextConfig)),
+      AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(nextMembers)),
+    ]);
   }
 
-  async function updateMember(patch) {
-    if (!churchId) throw new Error("Missing churchId");
-    const updated = await callApi({
-      resource: "users",
-      action: "update",
-      method: "POST",
-      body: { churchId, ...patch },
-    });
-    await refreshMembers(churchId);
-    return updated;
+  useEffect(() => {
+    (async () => {
+      try {
+        await loadLocal();
+        // (optional) later: fetch tenant bootstrap from GAS here
+      } finally {
+        setReady(true);
+      }
+    })();
+  }, []);
+
+  async function setTenantCode(code) {
+    const next = String(code || "").trim().toUpperCase();
+    setTenantCodeState(next);
+    await saveLocal(next, config, members);
+
+    if (apiEnabled) {
+      try {
+        await callApi({ resource: "tenant", action: "select", method: "POST", body: { tenantCode: next } });
+      } catch {}
+    }
   }
 
-  async function deleteMember(userId) {
-    if (!churchId) throw new Error("Missing churchId");
-    const updated = await callApi({
-      resource: "users",
-      action: "delete",
-      method: "POST",
-      body: { churchId, userId },
-    });
-    await refreshMembers(churchId);
-    return updated;
+  async function updateConfig(patch) {
+    const next = { ...config, ...patch };
+    setConfig(next);
+    await saveLocal(tenantCode, next, members);
+
+    if (apiEnabled) {
+      try {
+        await callApi({ resource: "config", action: "set", method: "POST", body: { tenantCode, config: next } });
+      } catch {}
+    }
   }
 
-  // ---- ADMIN: CONFIG ----
-  async function saveConfig(patch) {
-    if (!churchId) throw new Error("Missing churchId");
-    const updated = await callApi({
-      resource: "config",
-      action: "upsert",
-      method: "POST",
-      body: { churchId, ...patch },
-    });
-    setConfig(updated);
-    return updated;
+  async function addDonationLink({ type, label, url }) {
+    const nextLinks = [...(config.donationLinks || []), { id: uid(), type, label: label || type, url }];
+    await updateConfig({ donationLinks: nextLinks });
   }
 
-  // ---- ADMIN: DONATIONS ----
-  async function addDonation({ label, url, provider }) {
-    if (!churchId) throw new Error("Missing churchId");
-    const sortOrder = (donations?.length || 0) + 1;
-    await callApi({
-      resource: "donations",
-      action: "add",
-      method: "POST",
-      body: { churchId, label, url, provider, sortOrder },
-    });
-    await refreshChurchData(churchId);
+  async function removeDonationLink(id) {
+    const nextLinks = (config.donationLinks || []).filter((x) => x.id !== id);
+    await updateConfig({ donationLinks: nextLinks });
   }
 
-  async function removeDonation(donationId) {
-    if (!churchId) throw new Error("Missing churchId");
-    await callApi({
-      resource: "donations",
-      action: "delete",
-      method: "POST",
-      body: { churchId, donationId },
-    });
-    await refreshChurchData(churchId);
+  async function addMember(member) {
+    const nextMembers = [...members, member];
+    setMembers(nextMembers);
+    await saveLocal(tenantCode, config, nextMembers);
+
+    if (apiEnabled) {
+      try {
+        await callApi({ resource: "users", action: "create", method: "POST", body: { tenantCode, user: member } });
+      } catch {}
+    }
   }
 
-  // ---- ADMIN: EVENTS (optional) ----
-  async function addEvent({ title, dateTimeISO, location, description }) {
-    if (!churchId) throw new Error("Missing churchId");
-    await callApi({
-      resource: "events",
-      action: "add",
-      method: "POST",
-      body: { churchId, title, dateTimeISO, location, description },
-    });
-    await refreshChurchData(churchId);
+  async function updateMember(id, patch) {
+    const nextMembers = members.map((m) => (m.id === id ? { ...m, ...patch } : m));
+    setMembers(nextMembers);
+    await saveLocal(tenantCode, config, nextMembers);
+
+    if (apiEnabled) {
+      try {
+        await callApi({ resource: "users", action: "update", method: "POST", body: { tenantCode, id, patch } });
+      } catch {}
+    }
+  }
+
+  async function deleteMember(id) {
+    const nextMembers = members.filter((m) => m.id !== id);
+    setMembers(nextMembers);
+    await saveLocal(tenantCode, config, nextMembers);
+
+    if (apiEnabled) {
+      try {
+        await callApi({ resource: "users", action: "delete", method: "POST", body: { tenantCode, id } });
+      } catch {}
+    }
   }
 
   const value = useMemo(
     () => ({
-      tenant,
-      user,
-      churchId,
-
-      canUseApp,
-
+      ready,
+      apiEnabled,
+      tenantCode,
+      setTenantCode,
       config,
-      donations,
-      events,
       members,
-
-      restoreSession,
-      saveSession,
-      clearSession,
-
-      getTenantByInviteCode,
-      createTenant,
-      signupUser,
-      login,
-
-      refreshChurchData,
-      refreshMembers,
-
+      updateConfig,
+      addDonationLink,
+      removeDonationLink,
+      addMember,
       updateMember,
       deleteMember,
-
-      saveConfig,
-      addDonation,
-      removeDonation,
-
-      addEvent,
     }),
-    [tenant, user, churchId, canUseApp, config, donations, events, members]
+    [ready, apiEnabled, tenantCode, config, members]
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;

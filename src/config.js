@@ -1,6 +1,8 @@
-// src/config.js  (REPLACE)
+// src/config.js
 export const GAS_URL =
-  "https://script.google.com/macros/library/d/1MMW0-gV3Hveptt-Vxzku_hW5pjbYy-IX0UJeF8AaNpu8EfuXP-dXVJ37/2"; // keep your current one
-
-// Option A payment: pay on website, then open app and login
-export const PAYMENT_URL = "https://yourdomain.com/subscribe";
+  "https://script.google.com/macros/s/AKfycbxQHKKu5pqCqtih5pTsS8OA9NsOfJgb-uhfk8XyqAKdF-KhlvbPHKgl4wI6MxzCpTa8/exec";
+// ✅ Demo tenant + admin (matches your login screen text)
+export const DEMO_INVITE_CODE = "SANCT-001";
+export const DEMO_ADMIN_EMAIL = "admin@church.com";
+export const DEMO_ADMIN_PHONE = "5615550001";
+export const DEMO_ADMIN_PASSWORD = "admin123";
