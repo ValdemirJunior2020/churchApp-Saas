@@ -23,7 +23,7 @@ export default function GivingScreen() {
       <View style={styles.glass}>
         <Text style={styles.kicker}>GIVING</Text>
         <Text style={styles.title}>Support the Ministry</Text>
-        <Text style={styles.sub}>These buttons are configured by the Admin.</Text>
+        <Text style={styles.sub}>These buttons are set by the Pastor in Admin Settings.</Text>
 
         {links.length === 0 ? (
           <View style={styles.empty}>
@@ -33,7 +33,7 @@ export default function GivingScreen() {
         ) : (
           <View style={{ marginTop: 12, gap: 10 }}>
             {links.map((d, idx) => (
-              <Pressable key={`${d.label || "Give"}_${idx}`} style={styles.btn} onPress={() => open(d.url)}>
+              <Pressable key={`${d.donationId || d.label || "Give"}_${idx}`} style={styles.btn} onPress={() => open(d.url)}>
                 <Text style={styles.btnText}>{d.label || "Give"}</Text>
                 <Ionicons name="arrow-forward" size={18} color="#0f172a" />
               </Pressable>

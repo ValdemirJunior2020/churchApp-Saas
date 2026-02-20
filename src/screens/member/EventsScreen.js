@@ -2,22 +2,38 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useAppData } from "../../context/AppDataContext";
 
 export default function EventsScreen() {
+  const { events } = useAppData();
+  const list = Array.isArray(events) ? events : [];
+
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.container}>
       <View style={styles.glass}>
         <Text style={styles.kicker}>EVENTS</Text>
         <Text style={styles.title}>Church Events</Text>
-        <Text style={styles.sub}>Admin-managed events coming next.</Text>
+        <Text style={styles.sub}>Loaded from Google Sheets.</Text>
 
-        <View style={styles.empty}>
-          <Ionicons name="calendar-outline" size={28} color="#0f172a" />
-          <Text style={styles.emptyTitle}>No events yet</Text>
-          <Text style={styles.emptySub}>
-            This screen is ready. Next we can add an Admin “Events Manager” to create and publish events here.
-          </Text>
-        </View>
+        {list.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="calendar-outline" size={28} color="#0f172a" />
+            <Text style={styles.emptyTitle}>No events yet</Text>
+            <Text style={styles.emptySub}>Next we’ll add an Admin Events Manager to create events.</Text>
+          </View>
+        ) : (
+          <View style={{ marginTop: 12, gap: 10 }}>
+            {list.map((e) => (
+              <View key={e.eventId} style={styles.eventRow}>
+                <Text style={styles.eventTitle}>{e.title}</Text>
+                <Text style={styles.eventMeta}>
+                  {e.dateTimeISO ? new Date(e.dateTimeISO).toLocaleString() : ""} {e.location ? `• ${e.location}` : ""}
+                </Text>
+                {!!e.description && <Text style={styles.eventDesc}>{e.description}</Text>}
+              </View>
+            ))}
+          </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -40,4 +56,15 @@ const styles = StyleSheet.create({
   empty: { marginTop: 18, alignItems: "center", gap: 8, paddingVertical: 20 },
   emptyTitle: { fontSize: 16, fontWeight: "900", color: "#0f172a" },
   emptySub: { fontSize: 13, color: "#586174", textAlign: "center", maxWidth: 320 },
+
+  eventRow: {
+    borderRadius: 18,
+    padding: 12,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.10)",
+  },
+  eventTitle: { fontWeight: "900", color: "#0f172a", fontSize: 14 },
+  eventMeta: { marginTop: 4, color: "#586174", fontWeight: "700", fontSize: 12 },
+  eventDesc: { marginTop: 8, color: "#0f172a", fontWeight: "600", fontSize: 13 },
 });

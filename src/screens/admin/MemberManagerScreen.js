@@ -1,208 +1,246 @@
 // src/screens/admin/MemberManagerScreen.js
 import React, { useMemo, useState } from "react";
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View, FlatList } from "react-native";
+import {
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useAppData } from "../../context/AppDataContext";
 
-function MemberCard({ member, onDelete, onEdit }) {
-  return (
-    <View style={styles.memberCard}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.memberName}>{member.name}</Text>
-        <Text style={styles.memberMeta}>Phone: {member.phone}</Text>
-        <Text style={styles.memberMeta}>Role: {member.role}</Text>
-      </View>
+function GlassCard({ children, style }) {
+  return <View style={[styles.card, style]}>{children}</View>;
+}
 
-      <View style={styles.actions}>
-        <Pressable style={styles.editBtn} onPress={() => onEdit(member)}>
-          <Text style={styles.editBtnText}>Edit</Text>
-        </Pressable>
-        <Pressable style={styles.deleteBtn} onPress={() => onDelete(member)}>
-          <Text style={styles.deleteBtnText}>Delete</Text>
-        </Pressable>
-      </View>
+function Field({ label, value, onChangeText, placeholder, secureTextEntry }) {
+  return (
+    <View style={{ marginTop: 10 }}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="rgba(15,23,42,0.45)"
+        secureTextEntry={secureTextEntry}
+        autoCapitalize="none"
+        style={styles.input}
+      />
     </View>
   );
 }
 
 export default function MemberManagerScreen() {
-  const { members, deleteMember, updateMember } = useAppData();
+  const { members, deleteMember, updateMember, refreshMembers } = useAppData();
 
-  const [editing, setEditing] = useState(null); // member
-  const [editName, setEditName] = useState("");
-  const [editPhone, setEditPhone] = useState("");
-  const [editPassword, setEditPassword] = useState("");
+  const [editing, setEditing] = useState(null);
 
-  const data = useMemo(() => members, [members]);
+  const list = useMemo(() => {
+    return (Array.isArray(members) ? members : []).slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }, [members]);
 
-  function confirmDelete(member) {
-    Alert.alert("Delete Member?", `${member.name} (${member.phone})`, [
+  async function onDelete(m) {
+    Alert.alert("Delete member?", `${m.name} (${m.phone})`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
           try {
-            await deleteMember(member.id);
-          } catch (e) {
-            Alert.alert("Error", e?.message || "Could not delete.");
+            await deleteMember(m.memberId);
+            Alert.alert("Deleted", "Member removed.");
+          } catch (err) {
+            Alert.alert("Error", String(err?.message || err));
           }
         },
       },
     ]);
   }
 
-  function openEdit(member) {
-    setEditing(member);
-    setEditName(member.name || "");
-    setEditPhone(member.phone || "");
-    setEditPassword(member.password || "");
-  }
-
-  async function saveEdit() {
+  async function onSaveEdit() {
     try {
-      if (!editing) return;
-      await updateMember(editing.id, {
-        name: editName,
-        phone: editPhone,
-        password: editPassword,
+      const m = editing;
+      if (!m) return;
+
+      await updateMember(m.memberId, {
+        name: String(m.name || "").trim(),
+        phone: String(m.phone || "").trim(),
+        email: String(m.email || "").trim(),
+        password: String(m.password || ""),
+        role: String(m.role || "MEMBER").toUpperCase(),
+        isActive: true,
       });
+
       setEditing(null);
-    } catch (e) {
-      Alert.alert("Error", e?.message || "Could not update.");
+      Alert.alert("Saved", "Member updated.");
+      await refreshMembers();
+    } catch (err) {
+      Alert.alert("Error", String(err?.message || err));
     }
   }
 
   return (
-    <View style={styles.root}>
-      <View style={styles.glassHeader}>
+    <ScrollView style={styles.root} contentContainerStyle={styles.container}>
+      <GlassCard>
         <Text style={styles.kicker}>ADMIN</Text>
-        <Text style={styles.title}>Manage Members</Text>
-        <Text style={styles.sub}>Edit or delete locally registered members.</Text>
-      </View>
+        <Text style={styles.title}>Member Manager</Text>
+        <Text style={styles.sub}>View, edit, or delete signed-up members.</Text>
 
-      <FlatList
-        contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
-        data={data}
-        keyExtractor={(item) => item.id}
-        ListEmptyComponent={
+        {list.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No members yet</Text>
-            <Text style={styles.emptySub}>Create a Member account from the Login screen.</Text>
+            <Ionicons name="people-outline" size={28} color="#0f172a" />
+            <Text style={styles.emptyText}>No members yet.</Text>
           </View>
-        }
-        renderItem={({ item }) => (
-          <MemberCard member={item} onDelete={confirmDelete} onEdit={openEdit} />
+        ) : (
+          <View style={{ marginTop: 12, gap: 10 }}>
+            {list.map((m) => (
+              <View key={m.memberId} style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle}>{m.name}</Text>
+                  <Text style={styles.rowSub}>
+                    {m.phone} {m.email ? `• ${m.email}` : ""} • {m.role}
+                  </Text>
+                </View>
+
+                <Pressable style={styles.smallBtn} onPress={() => setEditing({ ...m })}>
+                  <Ionicons name="create-outline" size={18} color="#0f172a" />
+                </Pressable>
+
+                <Pressable style={styles.smallBtnDanger} onPress={() => onDelete(m)}>
+                  <Ionicons name="trash-outline" size={18} color="#0f172a" />
+                </Pressable>
+              </View>
+            ))}
+          </View>
         )}
-      />
+      </GlassCard>
 
       <Modal visible={!!editing} transparent animationType="fade" onRequestClose={() => setEditing(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <Pressable style={styles.overlay} onPress={() => setEditing(null)}>
+          <Pressable style={styles.modal} onPress={() => {}}>
             <Text style={styles.modalTitle}>Edit Member</Text>
+            <Text style={styles.modalSub}>Update details and save.</Text>
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Name</Text>
-              <TextInput value={editName} onChangeText={setEditName} style={styles.input} placeholder="Name" placeholderTextColor="#8b95a7" />
-            </View>
+            <Field label="Name" value={editing?.name || ""} onChangeText={(t) => setEditing((p) => ({ ...p, name: t }))} placeholder="Name" />
+            <Field label="Phone" value={editing?.phone || ""} onChangeText={(t) => setEditing((p) => ({ ...p, phone: t }))} placeholder="Phone" />
+            <Field label="Email" value={editing?.email || ""} onChangeText={(t) => setEditing((p) => ({ ...p, email: t }))} placeholder="Email" />
+            <Field label="Role (MEMBER/LEADER)" value={editing?.role || ""} onChangeText={(t) => setEditing((p) => ({ ...p, role: t }))} placeholder="MEMBER" />
+            <Field label="Password" value={editing?.password || ""} onChangeText={(t) => setEditing((p) => ({ ...p, password: t }))} placeholder="Password" secureTextEntry />
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Phone</Text>
-              <TextInput value={editPhone} onChangeText={setEditPhone} style={styles.input} placeholder="Phone" placeholderTextColor="#8b95a7" keyboardType="phone-pad" />
-            </View>
-
-            <View style={styles.field}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput value={editPassword} onChangeText={setEditPassword} style={styles.input} placeholder="Password" placeholderTextColor="#8b95a7" secureTextEntry />
-            </View>
-
-            <View style={styles.modalRow}>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
               <Pressable style={styles.cancelBtn} onPress={() => setEditing(null)}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+                <Text style={styles.cancelText}>Cancel</Text>
               </Pressable>
-              <Pressable style={styles.saveBtn} onPress={saveEdit}>
-                <Text style={styles.saveBtnText}>Save</Text>
+              <Pressable style={styles.saveBtn} onPress={onSaveEdit}>
+                <Text style={styles.saveText}>Save</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f6fb" },
-  glassHeader: {
-    margin: 16,
-    marginBottom: 0,
-    padding: 16,
-    borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.78)",
+  container: { padding: 16, paddingBottom: 28 },
+
+  card: {
+    backgroundColor: "rgba(255,255,255,0.82)",
     borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.10)",
+    borderColor: "rgba(15,23,42,0.10)",
+    borderRadius: 24,
+    padding: 16,
   },
+
   kicker: { fontSize: 11, letterSpacing: 2.5, color: "#64748b", textAlign: "center" },
   title: { marginTop: 8, fontSize: 22, fontWeight: "900", color: "#0f172a", textAlign: "center" },
   sub: { marginTop: 6, fontSize: 13, color: "#586174", textAlign: "center" },
 
-  memberCard: {
+  empty: { alignItems: "center", justifyContent: "center", paddingVertical: 22, gap: 8 },
+  emptyText: { color: "#586174", fontWeight: "800" },
+
+  row: {
     flexDirection: "row",
-    gap: 12,
     alignItems: "center",
-    padding: 14,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.78)",
-    borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.10)",
-    marginBottom: 12,
-  },
-  memberName: { fontSize: 16, fontWeight: "900", color: "#0f172a" },
-  memberMeta: { marginTop: 3, fontSize: 12, color: "#586174" },
-  actions: { gap: 8 },
-  editBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: "rgba(37, 99, 235, 0.10)",
-  },
-  editBtnText: { color: "#1d4ed8", fontWeight: "900", fontSize: 12 },
-  deleteBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: "rgba(239, 68, 68, 0.10)",
-  },
-  deleteBtnText: { color: "#b91c1c", fontWeight: "900", fontSize: 12 },
-
-  empty: { paddingTop: 36, alignItems: "center" },
-  emptyTitle: { fontSize: 16, fontWeight: "900", color: "#0f172a" },
-  emptySub: { marginTop: 6, fontSize: 13, color: "#586174", textAlign: "center", paddingHorizontal: 24 },
-
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", alignItems: "center", justifyContent: "center", padding: 18 },
-  modalCard: {
-    width: "100%",
-    maxWidth: 420,
-    borderRadius: 24,
-    padding: 16,
+    gap: 10,
+    padding: 12,
+    borderRadius: 18,
     backgroundColor: "rgba(255,255,255,0.92)",
     borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.10)",
+    borderColor: "rgba(15,23,42,0.10)",
   },
-  modalTitle: { fontSize: 18, fontWeight: "900", color: "#0f172a", textAlign: "center" },
-  field: { marginTop: 12 },
+  rowTitle: { fontWeight: "900", color: "#0f172a" },
+  rowSub: { marginTop: 2, color: "#586174", fontWeight: "700", fontSize: 12 },
+
+  smallBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "rgba(15,23,42,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  smallBtnDanger: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 99, 132, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 99, 132, 0.28)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", padding: 16, justifyContent: "center" },
+  modal: {
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.10)",
+  },
+  modalTitle: { fontSize: 18, fontWeight: "900", color: "#0f172a" },
+  modalSub: { marginTop: 4, fontSize: 12, color: "#586174" },
+
   label: { fontSize: 12, fontWeight: "900", color: "#0f172a", marginBottom: 6 },
   input: {
-    height: 46,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    backgroundColor: "rgba(255,255,255,0.9)",
+    height: 48,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(255,255,255,0.92)",
     borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.10)",
+    borderColor: "rgba(15,23,42,0.10)",
     color: "#0f172a",
+    fontWeight: "700",
   },
-  modalRow: { flexDirection: "row", gap: 10, marginTop: 16 },
-  cancelBtn: { flex: 1, height: 46, borderRadius: 16, backgroundColor: "rgba(15, 23, 42, 0.06)", alignItems: "center", justifyContent: "center" },
-  cancelBtnText: { fontWeight: "900", color: "#0f172a" },
-  saveBtn: { flex: 1, height: 46, borderRadius: 16, backgroundColor: "#0f172a", alignItems: "center", justifyContent: "center" },
-  saveBtnText: { fontWeight: "900", color: "#fff" },
+
+  cancelBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "rgba(15,23,42,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.10)",
+  },
+  cancelText: { fontWeight: "900", color: "#0f172a" },
+
+  saveBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "rgba(15, 23, 42, 0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveText: { fontWeight: "900", color: "white" },
 });

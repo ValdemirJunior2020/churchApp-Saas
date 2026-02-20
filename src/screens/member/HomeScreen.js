@@ -5,6 +5,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -32,7 +33,7 @@ function MenuItem({ icon, label, onPress }) {
 }
 
 export default function HomeScreen({ navigation }) {
-  const { churchConfig } = useAppData();
+  const { churchConfig, refreshConfig } = useAppData();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const verse = useMemo(() => {
@@ -43,12 +44,12 @@ export default function HomeScreen({ navigation }) {
     };
   }, []);
 
-  const ytId = String(churchConfig.youtubeId || "").trim();
+  const ytId = String(churchConfig.youtubeVideoId || "").trim();
   const ytUrl = ytId ? `https://www.youtube.com/watch?v=${ytId}` : null;
   const ytEmbed = ytId ? `https://www.youtube.com/embed/${ytId}` : null;
 
   function watchLive() {
-    if (!ytUrl) return Alert.alert("Missing", "Admin must set a YouTube Video ID first.");
+    if (!ytUrl) return Alert.alert("Missing", "Pastor must set a YouTube Video ID first (Admin Settings).");
     Linking.openURL(ytUrl).catch(() => {});
   }
 
@@ -62,8 +63,13 @@ export default function HomeScreen({ navigation }) {
     navigation.navigate("Events");
   }
 
-  function closeMenu() {
-    setMenuOpen(false);
+  async function onRefresh() {
+    try {
+      await refreshConfig();
+      Alert.alert("Updated", "Latest settings loaded.");
+    } catch {
+      Alert.alert("Offline", "Could not reach Google Sheet right now.");
+    }
   }
 
   return (
@@ -77,15 +83,17 @@ export default function HomeScreen({ navigation }) {
 
             <View style={styles.dynamicIsland} />
 
-            <View style={styles.pillRight}>
-              <Ionicons name="person" size={18} color="#0f172a" />
-            </View>
+            <Pressable style={styles.pillRight} onPress={onRefresh}>
+              <Ionicons name="refresh" size={18} color="#0f172a" />
+            </Pressable>
           </View>
 
           <View style={styles.brandWrap}>
             <View style={styles.logoWrap}>
-              {!!churchConfig.logoUrl && (
+              {!!churchConfig.logoUrl ? (
                 <Image source={{ uri: churchConfig.logoUrl }} style={styles.logo} resizeMode="cover" />
+              ) : (
+                <Ionicons name="leaf-outline" size={26} color="#0f172a" />
               )}
             </View>
             <Text style={styles.brandName}>
@@ -102,19 +110,27 @@ export default function HomeScreen({ navigation }) {
 
           <GlassCard style={{ marginTop: 14 }}>
             <Text style={styles.cardKicker}>Watch Live</Text>
+
             <View style={styles.videoFrame}>
               {ytEmbed ? (
-                <WebView
-                  source={{ uri: ytEmbed }}
-                  style={styles.webview}
-                  javaScriptEnabled
-                  domStorageEnabled
-                  allowsFullscreenVideo
-                />
+                Platform.OS === "web" ? (
+                  <Pressable style={styles.videoPlaceholder} onPress={watchLive}>
+                    <Ionicons name="logo-youtube" size={28} color="#0f172a" />
+                    <Text style={styles.videoPlaceholderText}>Open YouTube</Text>
+                  </Pressable>
+                ) : (
+                  <WebView
+                    source={{ uri: ytEmbed }}
+                    style={styles.webview}
+                    javaScriptEnabled
+                    domStorageEnabled
+                    allowsFullscreenVideo
+                  />
+                )
               ) : (
                 <View style={styles.videoPlaceholder}>
                   <Ionicons name="logo-youtube" size={28} color="#0f172a" />
-                  <Text style={styles.videoPlaceholderText}>Admin must set a YouTube ID</Text>
+                  <Text style={styles.videoPlaceholderText}>Pastor must set a YouTube Video ID</Text>
                 </View>
               )}
             </View>
@@ -142,17 +158,17 @@ export default function HomeScreen({ navigation }) {
         </View>
       </ScrollView>
 
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={closeMenu}>
-        <Pressable style={styles.menuOverlay} onPress={closeMenu}>
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={styles.menuOverlay} onPress={() => setMenuOpen(false)}>
           <Pressable style={styles.menuCard} onPress={() => {}}>
             <Text style={styles.menuTitle}>Menu</Text>
             <Text style={styles.menuSub}>Quick actions</Text>
 
             <MenuItem icon="heart-outline" label="Give" onPress={goGive} />
             <MenuItem icon="calendar-outline" label="Events" onPress={goEvents} />
-            <MenuItem icon="logo-youtube" label="Open YouTube" onPress={() => { closeMenu(); watchLive(); }} />
+            <MenuItem icon="logo-youtube" label="Open YouTube" onPress={() => { setMenuOpen(false); watchLive(); }} />
 
-            <Pressable style={styles.menuCloseBtn} onPress={closeMenu}>
+            <Pressable style={styles.menuCloseBtn} onPress={() => setMenuOpen(false)}>
               <Text style={styles.menuCloseText}>Close</Text>
             </Pressable>
           </Pressable>
@@ -256,7 +272,6 @@ const styles = StyleSheet.create({
   bottomLabels: { flexDirection: "row", justifyContent: "space-around", marginTop: 8 },
   bottomLabel: { fontSize: 12, color: "#586174", fontWeight: "700" },
 
-  // Menu modal
   menuOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-start", paddingTop: 90, paddingHorizontal: 16 },
   menuCard: {
     width: "100%",

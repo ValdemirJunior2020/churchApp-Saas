@@ -2,17 +2,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAppData } from "./AppDataContext";
+import { ADMIN_EMAIL, ADMIN_PASSWORD } from "../config";
 
 const AuthContext = createContext(null);
-
-const SESSION_KEY = "@church_session_v1";
-
-// Hardcoded Admin (mock)
-const ADMIN_EMAIL = "admin@church.com";
-const ADMIN_PASSWORD = "admin123";
+const SESSION_KEY = "@church_session_v2";
 
 export function AuthProvider({ children }) {
-  const { isHydrating: dataHydrating, members, addMember } = useAppData();
+  const { isHydrating: dataHydrating, members, refreshMembers, updateMember } = useAppData();
 
   const [authHydrating, setAuthHydrating] = useState(true);
   const [user, setUser] = useState(null);
@@ -42,19 +38,23 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        if (session.role === "ADMIN" && session.email === ADMIN_EMAIL) {
+        if (session.role === "ADMIN" && String(session.email).toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
           setUser(session);
           return;
         }
 
+        // Member session validation
         if (session.role === "MEMBER" && session.memberId) {
-          const stillExists = members.find((m) => m.id === session.memberId);
-          if (!stillExists) {
+          const latest = await refreshMembers();
+          const still = latest.find((m) => m.memberId === session.memberId);
+          if (!still) {
             setUser(null);
             await AsyncStorage.removeItem(SESSION_KEY);
             return;
           }
-          setUser({ ...session, name: stillExists.name, phone: stillExists.phone });
+          const next = { ...session, name: still.name, phone: still.phone, email: still.email };
+          setUser(next);
+          await saveSession(next);
           return;
         }
 
@@ -70,7 +70,7 @@ export function AuthProvider({ children }) {
     return () => {
       alive = false;
     };
-  }, [dataHydrating, members]);
+  }, [dataHydrating]);
 
   const api = useMemo(() => {
     return {
@@ -93,34 +93,35 @@ export function AuthProvider({ children }) {
           return adminUser;
         }
 
-        // Member login (phone)
-        const match = members.find((m) => String(m.phone || "").trim() === id);
+        // Member login by phone
+        const latest = await refreshMembers();
+        const match = latest.find((m) => String(m.phone || "").trim() === id);
         if (!match) throw new Error("Account not found.");
         if (String(match.password) !== pw) throw new Error("Wrong password.");
 
         const memberUser = {
           role: "MEMBER",
-          memberId: match.id,
+          memberId: match.memberId,
           name: match.name,
           phone: match.phone,
+          email: match.email,
         };
 
         setUser(memberUser);
         await saveSession(memberUser);
+
+        // update lastLoginAt on sheet (best effort)
+        try {
+          await updateMember(match.memberId, { lastLoginAt: new Date().toISOString() });
+        } catch {}
+
         return memberUser;
       },
 
-      async signup({ name, phone, password }) {
-        const created = await addMember({ name, phone, password });
-        const memberUser = {
-          role: "MEMBER",
-          memberId: created.id,
-          name: created.name,
-          phone: created.phone,
-        };
-        setUser(memberUser);
-        await saveSession(memberUser);
-        return memberUser;
+      async signup({ name, phone, password, email }) {
+        // signup is handled in LoginScreen through AppDataContext.addMember
+        // but kept here for compatibility if you want it later
+        throw new Error("Use the Sign Up form.");
       },
 
       async logout() {
@@ -128,7 +129,7 @@ export function AuthProvider({ children }) {
         await saveSession(null);
       },
     };
-  }, [authHydrating, dataHydrating, user, members, addMember]);
+  }, [authHydrating, dataHydrating, user, refreshMembers, updateMember]);
 
   return <AuthContext.Provider value={api}>{children}</AuthContext.Provider>;
 }
@@ -138,5 +139,3 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
-
-export const AUTH_ADMIN_HINT = { email: ADMIN_EMAIL, password: ADMIN_PASSWORD };

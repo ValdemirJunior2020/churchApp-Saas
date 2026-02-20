@@ -1,4 +1,4 @@
-// src/AppNavigator.js
+// src/AppNavigator.js  (REPLACE your file)
 import React from "react";
 import { ActivityIndicator, Pressable, Text } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
@@ -6,8 +6,11 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 
 import LoginScreen from "./screens/auth/LoginScreen";
+
 import AdminSettingsScreen from "./screens/admin/AdminSettingsScreen";
 import MemberManagerScreen from "./screens/admin/MemberManagerScreen";
+import AdminEventsScreen from "./screens/admin/AdminEventsScreen";
+
 import HomeScreen from "./screens/member/HomeScreen";
 import GivingScreen from "./screens/member/GivingScreen";
 import EventsScreen from "./screens/member/EventsScreen";
@@ -50,6 +53,7 @@ function AdminTabs() {
         component={AdminSettingsScreen}
         options={{
           title: "Admin Dashboard",
+          tabBarLabel: "Dashboard",
           tabBarIcon: ({ color, size }) => <Ionicons name="settings" color={color} size={size} />,
         }}
       />
@@ -58,6 +62,15 @@ function AdminTabs() {
         component={MemberManagerScreen}
         options={{
           tabBarIcon: ({ color, size }) => <Ionicons name="people" color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="EventsAdmin"
+        component={AdminEventsScreen}
+        options={{
+          title: "Events",
+          tabBarLabel: "Events",
+          tabBarIcon: ({ color, size }) => <Ionicons name="calendar" color={color} size={size} />,
         }}
       />
     </Tab.Navigator>
