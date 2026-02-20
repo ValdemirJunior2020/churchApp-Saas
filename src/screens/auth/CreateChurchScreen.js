@@ -1,22 +1,24 @@
-// src/screens/auth/LoginScreen.js  (REPLACE)
+// src/screens/auth/CreateChurchScreen.js  (CREATE)
 import React, { useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 
-export default function LoginScreen() {
-  const { login } = useAuth();
+export default function CreateChurchScreen() {
+  const { createChurchAndLogin } = useAuth();
 
-  const [inviteCode, setInviteCode] = useState("");
-  const [identifier, setIdentifier] = useState(""); // phone OR email
+  const [churchName, setChurchName] = useState("");
+  const [pastorName, setPastorName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function onSubmit() {
     try {
       setBusy(true);
-      await login({ inviteCode, identifier, password });
+      await createChurchAndLogin({ churchName, pastorName, phone, email, password });
     } catch (e) {
-      Alert.alert("Login failed", String(e?.message || e));
+      Alert.alert("Error", String(e?.message || e));
     } finally {
       setBusy(false);
     }
@@ -25,22 +27,37 @@ export default function LoginScreen() {
   return (
     <View style={styles.root}>
       <View style={styles.card}>
-        <Text style={styles.title}>Login</Text>
-        <Text style={styles.sub}>Use your Church Code + Phone/Email.</Text>
+        <Text style={styles.title}>Create Church (Pastor)</Text>
+        <Text style={styles.sub}>This creates a church + your Admin account (trial).</Text>
 
         <TextInput
-          value={inviteCode}
-          onChangeText={setInviteCode}
-          placeholder="Church Code (example: SANCT-001)"
+          value={churchName}
+          onChangeText={setChurchName}
+          placeholder="Church Name"
           style={styles.input}
-          autoCapitalize="characters"
           placeholderTextColor="#94a3b8"
         />
         <TextInput
-          value={identifier}
-          onChangeText={setIdentifier}
-          placeholder="Phone or Email"
+          value={pastorName}
+          onChangeText={setPastorName}
+          placeholder="Pastor Name"
           style={styles.input}
+          placeholderTextColor="#94a3b8"
+        />
+        <TextInput
+          value={phone}
+          onChangeText={setPhone}
+          placeholder="Phone"
+          style={styles.input}
+          keyboardType="phone-pad"
+          placeholderTextColor="#94a3b8"
+        />
+        <TextInput
+          value={email}
+          onChangeText={setEmail}
+          placeholder="Email (recommended)"
+          style={styles.input}
+          keyboardType="email-address"
           autoCapitalize="none"
           placeholderTextColor="#94a3b8"
         />
@@ -54,11 +71,11 @@ export default function LoginScreen() {
         />
 
         <Pressable style={[styles.primary, busy && { opacity: 0.6 }]} onPress={onSubmit} disabled={busy}>
-          <Text style={styles.primaryText}>{busy ? "Logging in..." : "Login"}</Text>
+          <Text style={styles.primaryText}>{busy ? "Creating..." : "Create & Login"}</Text>
         </Pressable>
 
-        <Text style={styles.tip}>
-          Admin test account from template: inviteCode SANCT-001, phone 5615550001, password admin123
+        <Text style={styles.note}>
+          Your members will join using your Church Code (invite code) shown in Admin Settings.
         </Text>
       </View>
     </View>
@@ -96,5 +113,5 @@ const styles = StyleSheet.create({
     backgroundColor: "#0f172a",
   },
   primaryText: { color: "white", fontWeight: "900" },
-  tip: { marginTop: 12, color: "#64748b", fontWeight: "700", lineHeight: 18 },
+  note: { marginTop: 12, color: "#64748b", fontWeight: "700", lineHeight: 18 },
 });

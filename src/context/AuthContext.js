@@ -1,141 +1,97 @@
-// src/context/AuthContext.js
+// src/context/AuthContext.js  (REPLACE)
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAppData } from "./AppDataContext";
-import { ADMIN_EMAIL, ADMIN_PASSWORD } from "../config";
 
 const AuthContext = createContext(null);
-const SESSION_KEY = "@church_session_v2";
 
 export function AuthProvider({ children }) {
-  const { isHydrating: dataHydrating, members, refreshMembers, updateMember } = useAppData();
+  const {
+    tenant,
+    user,
+    canUseApp,
+    restoreSession,
+    clearSession,
+    createTenant,
+    signupUser,
+    login,
+    refreshChurchData,
+    refreshMembers,
+  } = useAppData();
 
-  const [authHydrating, setAuthHydrating] = useState(true);
-  const [user, setUser] = useState(null);
-
-  async function saveSession(nextUser) {
-    if (!nextUser) {
-      await AsyncStorage.removeItem(SESSION_KEY);
-      return;
-    }
-    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(nextUser));
-  }
+  const [hydrating, setHydrating] = useState(true);
 
   useEffect(() => {
-    let alive = true;
-
     (async () => {
-      if (dataHydrating) return;
-
       try {
-        const raw = await AsyncStorage.getItem(SESSION_KEY);
-        const session = raw ? JSON.parse(raw) : null;
-
-        if (!alive) return;
-
-        if (!session) {
-          setUser(null);
-          return;
-        }
-
-        if (session.role === "ADMIN" && String(session.email).toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-          setUser(session);
-          return;
-        }
-
-        // Member session validation
-        if (session.role === "MEMBER" && session.memberId) {
-          const latest = await refreshMembers();
-          const still = latest.find((m) => m.memberId === session.memberId);
-          if (!still) {
-            setUser(null);
-            await AsyncStorage.removeItem(SESSION_KEY);
-            return;
+        const s = await restoreSession();
+        if (s?.tenant?.churchId) {
+          await refreshChurchData(s.tenant.churchId);
+          if (String(s.user?.role || "").toUpperCase() === "ADMIN") {
+            await refreshMembers(s.tenant.churchId);
           }
-          const next = { ...session, name: still.name, phone: still.phone, email: still.email };
-          setUser(next);
-          await saveSession(next);
-          return;
         }
-
-        setUser(null);
-        await AsyncStorage.removeItem(SESSION_KEY);
-      } catch {
-        setUser(null);
       } finally {
-        if (alive) setAuthHydrating(false);
+        setHydrating(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    return () => {
-      alive = false;
-    };
-  }, [dataHydrating]);
+  async function logout() {
+    await clearSession();
+  }
 
-  const api = useMemo(() => {
-    return {
-      isHydrating: authHydrating || dataHydrating,
+  // Create church + create admin user + login
+  async function createChurchAndLogin({ churchName, pastorName, phone, email, password }) {
+    const t = await createTenant({ churchName, ownerEmail: email });
+    await signupUser({
+      churchId: t.churchId,
+      role: "ADMIN",
+      name: pastorName,
+      phone,
+      email,
+      password,
+    });
+    const data = await login({ inviteCode: t.inviteCode, identifier: phone || email, password });
+    await refreshMembers(data.tenant.churchId);
+    return data;
+  }
+
+  // Join church as member + login
+  async function joinChurchAndLogin({ inviteCode, name, phone, email, password }) {
+    await signupUser({
+      inviteCode,
+      role: "MEMBER",
+      name,
+      phone,
+      email,
+      password,
+    });
+    return login({ inviteCode, identifier: phone || email, password });
+  }
+
+  const role = String(user?.role || "").toUpperCase();
+
+  const value = useMemo(
+    () => ({
+      hydrating,
+      tenant,
       user,
-      isAdmin: user?.role === "ADMIN",
-      isMember: user?.role === "MEMBER",
+      role,
+      canUseApp,
+      login,
+      logout,
+      createChurchAndLogin,
+      joinChurchAndLogin,
+    }),
+    [hydrating, tenant, user, role, canUseApp, login]
+  );
 
-      async login({ identifier, password }) {
-        const id = String(identifier || "").trim();
-        const pw = String(password || "").trim();
-        if (!id || !pw) throw new Error("Enter credentials.");
-
-        // Admin login
-        if (id.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-          if (pw !== ADMIN_PASSWORD) throw new Error("Invalid admin password.");
-          const adminUser = { role: "ADMIN", name: "Pastor Admin", email: ADMIN_EMAIL };
-          setUser(adminUser);
-          await saveSession(adminUser);
-          return adminUser;
-        }
-
-        // Member login by phone
-        const latest = await refreshMembers();
-        const match = latest.find((m) => String(m.phone || "").trim() === id);
-        if (!match) throw new Error("Account not found.");
-        if (String(match.password) !== pw) throw new Error("Wrong password.");
-
-        const memberUser = {
-          role: "MEMBER",
-          memberId: match.memberId,
-          name: match.name,
-          phone: match.phone,
-          email: match.email,
-        };
-
-        setUser(memberUser);
-        await saveSession(memberUser);
-
-        // update lastLoginAt on sheet (best effort)
-        try {
-          await updateMember(match.memberId, { lastLoginAt: new Date().toISOString() });
-        } catch {}
-
-        return memberUser;
-      },
-
-      async signup({ name, phone, password, email }) {
-        // signup is handled in LoginScreen through AppDataContext.addMember
-        // but kept here for compatibility if you want it later
-        throw new Error("Use the Sign Up form.");
-      },
-
-      async logout() {
-        setUser(null);
-        await saveSession(null);
-      },
-    };
-  }, [authHydrating, dataHydrating, user, refreshMembers, updateMember]);
-
-  return <AuthContext.Provider value={api}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
   return ctx;
 }

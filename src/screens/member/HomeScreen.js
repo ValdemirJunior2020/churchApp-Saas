@@ -1,180 +1,80 @@
-// src/screens/member/HomeScreen.js
-import React, { useMemo, useState } from "react";
-import {
-  Alert,
-  Image,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { useAppData } from "../../context/AppDataContext";
-import { Ionicons } from "@expo/vector-icons";
+// src/screens/member/HomeScreen.js  (REPLACE)
+import React, { useMemo } from "react";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
+import { useAppData } from "../../context/AppDataContext";
 
-function GlassCard({ children, style }) {
-  return <View style={[styles.glassCard, style]}>{children}</View>;
-}
-
-function MenuItem({ icon, label, onPress }) {
-  return (
-    <Pressable style={styles.menuItem} onPress={onPress}>
-      <View style={styles.menuIcon}>
-        <Ionicons name={icon} size={18} color="#0f172a" />
-      </View>
-      <Text style={styles.menuLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color="#64748b" />
-    </Pressable>
-  );
-}
+const DEFAULT_VERSE = {
+  title: "Verse of the Day",
+  text: "For where two or three gather in my name, there am I with them.",
+  ref: "— Matthew 18:20",
+};
 
 export default function HomeScreen({ navigation }) {
-  const { churchConfig, refreshConfig } = useAppData();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { config } = useAppData();
 
-  const verse = useMemo(() => {
-    return {
-      title: "Verse of the Day",
-      text: "For where two or three gather in my name,\nthere am I with them.",
-      ref: "— Matthew 18:20",
-    };
-  }, []);
+  const churchName = config?.churchName || "Church";
+  const logoUrl = String(config?.logoUrl || "").trim();
+  const youtubeId = String(config?.youtubeVideoId || "").trim();
 
-  const ytId = String(churchConfig.youtubeVideoId || "").trim();
-  const ytUrl = ytId ? `https://www.youtube.com/watch?v=${ytId}` : null;
-  const ytEmbed = ytId ? `https://www.youtube.com/embed/${ytId}` : null;
-
-  function watchLive() {
-    if (!ytUrl) return Alert.alert("Missing", "Pastor must set a YouTube Video ID first (Admin Settings).");
-    Linking.openURL(ytUrl).catch(() => {});
-  }
-
-  function goGive() {
-    setMenuOpen(false);
-    navigation.navigate("Give");
-  }
-
-  function goEvents() {
-    setMenuOpen(false);
-    navigation.navigate("Events");
-  }
-
-  async function onRefresh() {
-    try {
-      await refreshConfig();
-      Alert.alert("Updated", "Latest settings loaded.");
-    } catch {
-      Alert.alert("Offline", "Could not reach Google Sheet right now.");
-    }
-  }
+  const embedUrl = useMemo(() => {
+    if (!youtubeId) return "";
+    return `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1&playsinline=1`;
+  }, [youtubeId]);
 
   return (
-    <>
-      <ScrollView style={styles.root} contentContainerStyle={styles.container}>
-        <View style={styles.phoneFrameHint}>
-          <View style={styles.topPills}>
-            <Pressable style={styles.pillLeft} onPress={() => setMenuOpen(true)}>
-              <Ionicons name="menu" size={18} color="#0f172a" />
-            </Pressable>
-
-            <View style={styles.dynamicIsland} />
-
-            <Pressable style={styles.pillRight} onPress={onRefresh}>
-              <Ionicons name="refresh" size={18} color="#0f172a" />
-            </Pressable>
-          </View>
-
-          <View style={styles.brandWrap}>
-            <View style={styles.logoWrap}>
-              {!!churchConfig.logoUrl ? (
-                <Image source={{ uri: churchConfig.logoUrl }} style={styles.logo} resizeMode="cover" />
-              ) : (
-                <Ionicons name="leaf-outline" size={26} color="#0f172a" />
-              )}
+    <ScrollView style={styles.root} contentContainerStyle={styles.container}>
+      <View style={styles.heroCard}>
+        <View style={styles.topRow}>
+          {logoUrl ? (
+            <Image source={{ uri: logoUrl }} style={styles.logo} />
+          ) : (
+            <View style={styles.logoFallback}>
+              <Text style={styles.logoFallbackText}>{churchName.slice(0, 1).toUpperCase()}</Text>
             </View>
-            <Text style={styles.brandName}>
-              {String(churchConfig.churchName || "SANCTUARY").toUpperCase()}
-            </Text>
-            {!!churchConfig.address && <Text style={styles.brandSub}>{churchConfig.address}</Text>}
-          </View>
-
-          <GlassCard style={{ marginTop: 14 }}>
-            <Text style={styles.cardKicker}>{verse.title}</Text>
-            <Text style={styles.verseText}>{verse.text}</Text>
-            <Text style={styles.verseRef}>{verse.ref}</Text>
-          </GlassCard>
-
-          <GlassCard style={{ marginTop: 14 }}>
-            <Text style={styles.cardKicker}>Watch Live</Text>
-
-            <View style={styles.videoFrame}>
-              {ytEmbed ? (
-                Platform.OS === "web" ? (
-                  <Pressable style={styles.videoPlaceholder} onPress={watchLive}>
-                    <Ionicons name="logo-youtube" size={28} color="#0f172a" />
-                    <Text style={styles.videoPlaceholderText}>Open YouTube</Text>
-                  </Pressable>
-                ) : (
-                  <WebView
-                    source={{ uri: ytEmbed }}
-                    style={styles.webview}
-                    javaScriptEnabled
-                    domStorageEnabled
-                    allowsFullscreenVideo
-                  />
-                )
-              ) : (
-                <View style={styles.videoPlaceholder}>
-                  <Ionicons name="logo-youtube" size={28} color="#0f172a" />
-                  <Text style={styles.videoPlaceholderText}>Pastor must set a YouTube Video ID</Text>
-                </View>
-              )}
-            </View>
-          </GlassCard>
-
-          <View style={styles.bottomButtons}>
-            <Pressable style={styles.iconBtn} onPress={watchLive}>
-              <Ionicons name="play" size={18} color="#0f172a" />
-            </Pressable>
-
-            <Pressable style={styles.iconBtn} onPress={goGive}>
-              <Ionicons name="heart" size={18} color="#0f172a" />
-            </Pressable>
-
-            <Pressable style={styles.iconBtn} onPress={goEvents}>
-              <Ionicons name="calendar" size={18} color="#0f172a" />
-            </Pressable>
-          </View>
-
-          <View style={styles.bottomLabels}>
-            <Text style={styles.bottomLabel}>Watch Live</Text>
-            <Text style={styles.bottomLabel}>Give</Text>
-            <Text style={styles.bottomLabel}>Events</Text>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.kicker}>SANCTUARY</Text>
+            <Text style={styles.title}>{churchName}</Text>
           </View>
         </View>
-      </ScrollView>
 
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <Pressable style={styles.menuOverlay} onPress={() => setMenuOpen(false)}>
-          <Pressable style={styles.menuCard} onPress={() => {}}>
-            <Text style={styles.menuTitle}>Menu</Text>
-            <Text style={styles.menuSub}>Quick actions</Text>
+        <View style={styles.verseCard}>
+          <Text style={styles.verseTitle}>{DEFAULT_VERSE.title}</Text>
+          <Text style={styles.verseText}>{DEFAULT_VERSE.text}</Text>
+          <Text style={styles.verseRef}>{DEFAULT_VERSE.ref}</Text>
+        </View>
 
-            <MenuItem icon="heart-outline" label="Give" onPress={goGive} />
-            <MenuItem icon="calendar-outline" label="Events" onPress={goEvents} />
-            <MenuItem icon="logo-youtube" label="Open YouTube" onPress={() => { setMenuOpen(false); watchLive(); }} />
-
-            <Pressable style={styles.menuCloseBtn} onPress={() => setMenuOpen(false)}>
-              <Text style={styles.menuCloseText}>Close</Text>
-            </Pressable>
+        <View style={styles.quickRow}>
+          <Pressable style={styles.quickBtn} onPress={() => navigation.navigate("Give")}>
+            <Text style={styles.quickText}>Give</Text>
           </Pressable>
-        </Pressable>
-      </Modal>
-    </>
+          <Pressable style={styles.quickBtn} onPress={() => navigation.navigate("Events")}>
+            <Text style={styles.quickText}>Events</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {embedUrl ? (
+        <View style={styles.videoCard}>
+          <Text style={styles.videoTitle}>Watch</Text>
+          <View style={styles.videoWrap}>
+            <WebView
+              source={{ uri: embedUrl }}
+              style={{ flex: 1 }}
+              javaScriptEnabled
+              domStorageEnabled
+              allowsFullscreenVideo
+            />
+          </View>
+        </View>
+      ) : (
+        <View style={styles.videoCard}>
+          <Text style={styles.videoTitle}>Watch</Text>
+          <Text style={styles.videoSub}>Pastor can add a YouTube Video ID in Admin Settings.</Text>
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
@@ -182,139 +82,68 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f6fb" },
   container: { padding: 16, paddingBottom: 28 },
 
-  phoneFrameHint: {
-    borderRadius: 30,
+  heroCard: {
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.12)",
+    borderRadius: 26,
+    padding: 16,
+  },
+  topRow: { flexDirection: "row", gap: 12, alignItems: "center" },
+  logo: { width: 56, height: 56, borderRadius: 18, backgroundColor: "rgba(15,23,42,0.06)" },
+  logoFallback: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: "rgba(15,23,42,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoFallbackText: { color: "#0f172a", fontWeight: "900", fontSize: 22 },
+
+  kicker: { fontSize: 11, letterSpacing: 2.5, color: "#64748b", fontWeight: "900" },
+  title: { marginTop: 4, fontSize: 22, fontWeight: "900", color: "#0f172a" },
+
+  verseCard: {
+    marginTop: 14,
+    borderRadius: 22,
     padding: 14,
-    backgroundColor: "rgba(255,255,255,0.50)",
+    backgroundColor: "rgba(15,23,42,0.06)",
     borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.08)",
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 2,
+    borderColor: "rgba(15,23,42,0.10)",
   },
+  verseTitle: { color: "#64748b", fontWeight: "900", letterSpacing: 1 },
+  verseText: { marginTop: 10, fontSize: 16, fontWeight: "800", color: "#0f172a", lineHeight: 22 },
+  verseRef: { marginTop: 10, color: "#64748b", fontWeight: "900" },
 
-  topPills: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
-  pillLeft: {
-    width: 38,
-    height: 38,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.75)",
-    borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.10)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pillRight: {
-    width: 38,
-    height: 38,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.75)",
-    borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.10)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dynamicIsland: { width: 120, height: 26, borderRadius: 999, backgroundColor: "rgba(15, 23, 42, 0.92)" },
-
-  brandWrap: { alignItems: "center", marginTop: 6 },
-  logoWrap: {
-    width: 62,
-    height: 62,
+  quickRow: { flexDirection: "row", gap: 10, marginTop: 14 },
+  quickBtn: {
+    flex: 1,
+    height: 48,
     borderRadius: 18,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.75)",
-    borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.10)",
+    backgroundColor: "#0f172a",
     alignItems: "center",
     justifyContent: "center",
   },
-  logo: { width: "100%", height: "100%" },
-  brandName: { marginTop: 10, fontSize: 18, fontWeight: "900", letterSpacing: 1.2, color: "#0f172a" },
-  brandSub: { marginTop: 6, fontSize: 12, color: "#586174", textAlign: "center" },
+  quickText: { color: "white", fontWeight: "900" },
 
-  glassCard: {
-    borderRadius: 24,
+  videoCard: {
+    marginTop: 14,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.12)",
+    borderRadius: 26,
     padding: 16,
-    backgroundColor: "rgba(255,255,255,0.68)",
-    borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.10)",
   },
-  cardKicker: { fontSize: 12, color: "#64748b", fontWeight: "800", letterSpacing: 1.1 },
-  verseText: { marginTop: 10, fontSize: 18, fontWeight: "400", color: "#0f172a", textAlign: "center", lineHeight: 26 },
-  verseRef: { marginTop: 10, fontSize: 13, color: "#586174", textAlign: "center", fontWeight: "700" },
-
-  videoFrame: {
-    marginTop: 10,
-    borderRadius: 18,
+  videoTitle: { fontSize: 18, fontWeight: "900", color: "#0f172a" },
+  videoSub: { marginTop: 8, color: "#64748b", fontWeight: "800" },
+  videoWrap: {
+    marginTop: 12,
+    height: 220,
+    borderRadius: 22,
     overflow: "hidden",
-    height: 200,
-    backgroundColor: "rgba(15, 23, 42, 0.06)",
     borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.08)",
+    borderColor: "rgba(15,23,42,0.12)",
+    backgroundColor: "rgba(15,23,42,0.06)",
   },
-  webview: { flex: 1 },
-  videoPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
-  videoPlaceholderText: { color: "#586174", fontWeight: "800" },
-
-  bottomButtons: { flexDirection: "row", justifyContent: "space-around", marginTop: 16 },
-  iconBtn: {
-    width: 54,
-    height: 54,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.78)",
-    borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.10)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bottomLabels: { flexDirection: "row", justifyContent: "space-around", marginTop: 8 },
-  bottomLabel: { fontSize: 12, color: "#586174", fontWeight: "700" },
-
-  menuOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-start", paddingTop: 90, paddingHorizontal: 16 },
-  menuCard: {
-    width: "100%",
-    maxWidth: 520,
-    alignSelf: "center",
-    borderRadius: 24,
-    padding: 16,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.10)",
-  },
-  menuTitle: { fontSize: 18, fontWeight: "900", color: "#0f172a" },
-  menuSub: { marginTop: 4, fontSize: 13, color: "#586174", marginBottom: 12 },
-
-  menuItem: {
-    height: 52,
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    backgroundColor: "rgba(255,255,255,0.82)",
-    borderWidth: 1,
-    borderColor: "rgba(15, 23, 42, 0.10)",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 10,
-  },
-  menuIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(15, 23, 42, 0.06)",
-  },
-  menuLabel: { flex: 1, fontWeight: "900", color: "#0f172a" },
-
-  menuCloseBtn: {
-    height: 46,
-    borderRadius: 16,
-    backgroundColor: "rgba(15, 23, 42, 0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 2,
-  },
-  menuCloseText: { fontWeight: "900", color: "#0f172a" },
 });

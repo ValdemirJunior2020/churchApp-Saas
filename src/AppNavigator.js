@@ -1,32 +1,28 @@
-// src/AppNavigator.js  (REPLACE your file)
+// src/AppNavigator.js  (REPLACE)
 import React from "react";
-import { ActivityIndicator, Pressable, Text } from "react-native";
+import { Pressable, Text } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useAuth } from "./context/AuthContext";
+
+import WelcomeScreen from "./screens/auth/WelcomeScreen";
+import CreateChurchScreen from "./screens/auth/CreateChurchScreen";
+import JoinChurchScreen from "./screens/auth/JoinChurchScreen";
 import LoginScreen from "./screens/auth/LoginScreen";
+import PaymentRequiredScreen from "./screens/auth/PaymentRequiredScreen";
 
 import AdminSettingsScreen from "./screens/admin/AdminSettingsScreen";
 import MemberManagerScreen from "./screens/admin/MemberManagerScreen";
-import AdminEventsScreen from "./screens/admin/AdminEventsScreen";
 
 import HomeScreen from "./screens/member/HomeScreen";
 import GivingScreen from "./screens/member/GivingScreen";
 import EventsScreen from "./screens/member/EventsScreen";
 
-import { useAuth } from "./context/AuthContext";
-
-const Tab = createBottomTabNavigator();
-
-const tabBarStyle = {
-  backgroundColor: "rgba(255,255,255,0.85)",
-  borderTopColor: "rgba(15, 23, 42, 0.08)",
-  borderTopWidth: 1,
-  height: 64,
-  paddingBottom: 8,
-  paddingTop: 8,
-};
+const Stack = createNativeStackNavigator();
+const Tabs = createBottomTabNavigator();
 
 function LogoutButton() {
   const { logout } = useAuth();
@@ -39,97 +35,93 @@ function LogoutButton() {
 
 function AdminTabs() {
   return (
-    <Tab.Navigator
+    <Tabs.Navigator
       screenOptions={{
         headerRight: () => <LogoutButton />,
-        tabBarStyle,
         tabBarActiveTintColor: "#0f172a",
-        tabBarInactiveTintColor: "#64748b",
-        tabBarLabelStyle: { fontWeight: "800", fontSize: 11 },
       }}
     >
-      <Tab.Screen
-        name="Branding"
+      <Tabs.Screen
+        name="AdminSettings"
         component={AdminSettingsScreen}
         options={{
           title: "Admin Dashboard",
-          tabBarLabel: "Dashboard",
-          tabBarIcon: ({ color, size }) => <Ionicons name="settings" color={color} size={size} />,
+          tabBarLabel: "Admin",
+          tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" color={color} size={size} />,
         }}
       />
-      <Tab.Screen
+      <Tabs.Screen
         name="Members"
         component={MemberManagerScreen}
         options={{
-          tabBarIcon: ({ color, size }) => <Ionicons name="people" color={color} size={size} />,
+          title: "Members",
+          tabBarLabel: "Members",
+          tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" color={color} size={size} />,
         }}
       />
-      <Tab.Screen
-        name="EventsAdmin"
-        component={AdminEventsScreen}
-        options={{
-          title: "Events",
-          tabBarLabel: "Events",
-          tabBarIcon: ({ color, size }) => <Ionicons name="calendar" color={color} size={size} />,
-        }}
-      />
-    </Tab.Navigator>
+    </Tabs.Navigator>
   );
 }
 
 function MemberTabs() {
   return (
-    <Tab.Navigator
+    <Tabs.Navigator
       screenOptions={{
         headerRight: () => <LogoutButton />,
-        tabBarStyle,
         tabBarActiveTintColor: "#0f172a",
-        tabBarInactiveTintColor: "#64748b",
-        tabBarLabelStyle: { fontWeight: "800", fontSize: 11 },
       }}
     >
-      <Tab.Screen
+      <Tabs.Screen
         name="Home"
         component={HomeScreen}
         options={{
-          title: "Church Home",
-          tabBarIcon: ({ color, size }) => <Ionicons name="home" color={color} size={size} />,
+          title: "Sanctuary",
+          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} />,
         }}
       />
-      <Tab.Screen
+      <Tabs.Screen
         name="Give"
         component={GivingScreen}
         options={{
-          title: "Giving",
-          tabBarIcon: ({ color, size }) => <Ionicons name="heart" color={color} size={size} />,
+          title: "Give",
+          tabBarIcon: ({ color, size }) => <Ionicons name="heart-outline" color={color} size={size} />,
         }}
       />
-      <Tab.Screen
+      <Tabs.Screen
         name="Events"
         component={EventsScreen}
         options={{
           title: "Events",
-          tabBarIcon: ({ color, size }) => <Ionicons name="calendar" color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" color={color} size={size} />,
         }}
       />
-    </Tab.Navigator>
+    </Tabs.Navigator>
   );
 }
 
 export default function AppNavigator() {
-  const { isHydrating, user, isAdmin, isMember } = useAuth();
+  const { hydrating, user, role, canUseApp } = useAuth();
 
-  if (isHydrating) {
-    return (
-      <NavigationContainer>
-        <ActivityIndicator style={{ flex: 1 }} />
-      </NavigationContainer>
-    );
-  }
+  if (hydrating) return null;
 
   return (
     <NavigationContainer>
-      {!user ? <LoginScreen /> : isAdmin ? <AdminTabs /> : isMember ? <MemberTabs /> : <LoginScreen />}
+      {!user ? (
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Welcome" component={WelcomeScreen} />
+          <Stack.Screen name="CreateChurch" component={CreateChurchScreen} />
+          <Stack.Screen name="JoinChurch" component={JoinChurchScreen} />
+          <Stack.Screen name="Login" component={LoginScreen} />
+        </Stack.Navigator>
+      ) : !canUseApp ? (
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Paywall" component={PaymentRequiredScreen} />
+        </Stack.Navigator>
+      ) : role === "ADMIN" ? (
+        <AdminTabs />
+      ) : (
+        <MemberTabs />
+      )}
     </NavigationContainer>
   );
 }

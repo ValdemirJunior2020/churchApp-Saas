@@ -1,10 +1,6 @@
-// src/config.js
+// src/config.js  (REPLACE)
 export const GAS_URL =
-  "https://script.google.com/macros/s/AKfycbxQHKKu5pqCqtih5pTsS8OA9NsOfJgb-uhfk8XyqAKdF-KhlvbPHKgl4wI6MxzCpTa8/exec";
+  "https://script.google.com/macros/library/d/1MMW0-gV3Hveptt-Vxzku_hW5pjbYy-IX0UJeF8AaNpu8EfuXP-dXVJ37/2"; // keep your current one
 
-// must match Code.gs API_KEY
-export const GAS_API_KEY = "church_saas_key_123";
-
-// Hardcoded Admin (Pastor)
-export const ADMIN_EMAIL = "admin@church.com";
-export const ADMIN_PASSWORD = "admin123";
+// Option A payment: pay on website, then open app and login
+export const PAYMENT_URL = "https://yourdomain.com/subscribe";

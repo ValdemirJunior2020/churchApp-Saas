@@ -1,147 +1,108 @@
-// src/screens/admin/MemberManagerScreen.js
-import React, { useMemo, useState } from "react";
-import {
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+// src/screens/admin/MemberManagerScreen.js  (REPLACE)
+import React, { useEffect, useMemo, useState } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useAppData } from "../../context/AppDataContext";
 
-function GlassCard({ children, style }) {
-  return <View style={[styles.card, style]}>{children}</View>;
-}
-
-function Field({ label, value, onChangeText, placeholder, secureTextEntry }) {
-  return (
-    <View style={{ marginTop: 10 }}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="rgba(15,23,42,0.45)"
-        secureTextEntry={secureTextEntry}
-        autoCapitalize="none"
-        style={styles.input}
-      />
-    </View>
-  );
-}
-
 export default function MemberManagerScreen() {
-  const { members, deleteMember, updateMember, refreshMembers } = useAppData();
+  const { members, refreshMembers, updateMember, deleteMember } = useAppData();
 
-  const [editing, setEditing] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editRole, setEditRole] = useState("MEMBER");
+
+  useEffect(() => {
+    refreshMembers().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const list = useMemo(() => {
-    return (Array.isArray(members) ? members : []).slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const arr = Array.isArray(members) ? members : [];
+    return arr
+      .filter((u) => String(u.isActive).toUpperCase() !== "FALSE")
+      .sort((a, b) => String(a.role || "").localeCompare(String(b.role || "")));
   }, [members]);
 
-  async function onDelete(m) {
-    Alert.alert("Delete member?", `${m.name} (${m.phone})`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteMember(m.memberId);
-            Alert.alert("Deleted", "Member removed.");
-          } catch (err) {
-            Alert.alert("Error", String(err?.message || err));
-          }
-        },
-      },
-    ]);
+  function pick(u) {
+    setSelected(u);
+    setEditName(String(u.name || ""));
+    setEditPhone(String(u.phone || ""));
+    setEditRole(String(u.role || "MEMBER").toUpperCase());
   }
 
-  async function onSaveEdit() {
+  async function onSave() {
     try {
-      const m = editing;
-      if (!m) return;
-
-      await updateMember(m.memberId, {
-        name: String(m.name || "").trim(),
-        phone: String(m.phone || "").trim(),
-        email: String(m.email || "").trim(),
-        password: String(m.password || ""),
-        role: String(m.role || "MEMBER").toUpperCase(),
-        isActive: true,
+      if (!selected) return;
+      await updateMember({
+        userId: selected.userId,
+        name: editName,
+        phone: editPhone,
+        role: editRole,
       });
-
-      setEditing(null);
       Alert.alert("Saved", "Member updated.");
-      await refreshMembers();
-    } catch (err) {
-      Alert.alert("Error", String(err?.message || err));
+      setSelected(null);
+    } catch (e) {
+      Alert.alert("Error", String(e?.message || e));
+    }
+  }
+
+  async function onDelete(u) {
+    try {
+      await deleteMember(u.userId);
+    } catch (e) {
+      Alert.alert("Error", String(e?.message || e));
     }
   }
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.container}>
-      <GlassCard>
+      <View style={styles.card}>
         <Text style={styles.kicker}>ADMIN</Text>
-        <Text style={styles.title}>Member Manager</Text>
-        <Text style={styles.sub}>View, edit, or delete signed-up members.</Text>
+        <Text style={styles.title}>Members</Text>
+        <Text style={styles.sub}>Manage members inside this church only.</Text>
 
-        {list.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="people-outline" size={28} color="#0f172a" />
-            <Text style={styles.emptyText}>No members yet.</Text>
-          </View>
-        ) : (
-          <View style={{ marginTop: 12, gap: 10 }}>
-            {list.map((m) => (
-              <View key={m.memberId} style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.rowTitle}>{m.name}</Text>
-                  <Text style={styles.rowSub}>
-                    {m.phone} {m.email ? `• ${m.email}` : ""} • {m.role}
-                  </Text>
-                </View>
+        {selected ? (
+          <View style={styles.editBox}>
+            <Text style={styles.editTitle}>Edit Member</Text>
+            <TextInput value={editName} onChangeText={setEditName} style={styles.input} placeholder="Name" />
+            <TextInput value={editPhone} onChangeText={setEditPhone} style={styles.input} placeholder="Phone" />
+            <TextInput value={editRole} onChangeText={setEditRole} style={styles.input} placeholder="Role (ADMIN/MEMBER)" autoCapitalize="characters" />
 
-                <Pressable style={styles.smallBtn} onPress={() => setEditing({ ...m })}>
-                  <Ionicons name="create-outline" size={18} color="#0f172a" />
-                </Pressable>
-
-                <Pressable style={styles.smallBtnDanger} onPress={() => onDelete(m)}>
-                  <Ionicons name="trash-outline" size={18} color="#0f172a" />
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        )}
-      </GlassCard>
-
-      <Modal visible={!!editing} transparent animationType="fade" onRequestClose={() => setEditing(null)}>
-        <Pressable style={styles.overlay} onPress={() => setEditing(null)}>
-          <Pressable style={styles.modal} onPress={() => {}}>
-            <Text style={styles.modalTitle}>Edit Member</Text>
-            <Text style={styles.modalSub}>Update details and save.</Text>
-
-            <Field label="Name" value={editing?.name || ""} onChangeText={(t) => setEditing((p) => ({ ...p, name: t }))} placeholder="Name" />
-            <Field label="Phone" value={editing?.phone || ""} onChangeText={(t) => setEditing((p) => ({ ...p, phone: t }))} placeholder="Phone" />
-            <Field label="Email" value={editing?.email || ""} onChangeText={(t) => setEditing((p) => ({ ...p, email: t }))} placeholder="Email" />
-            <Field label="Role (MEMBER/LEADER)" value={editing?.role || ""} onChangeText={(t) => setEditing((p) => ({ ...p, role: t }))} placeholder="MEMBER" />
-            <Field label="Password" value={editing?.password || ""} onChangeText={(t) => setEditing((p) => ({ ...p, password: t }))} placeholder="Password" secureTextEntry />
-
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
-              <Pressable style={styles.cancelBtn} onPress={() => setEditing(null)}>
-                <Text style={styles.cancelText}>Cancel</Text>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+              <Pressable style={[styles.softBtn, { flex: 1 }]} onPress={() => setSelected(null)}>
+                <Text style={styles.softText}>Cancel</Text>
               </Pressable>
-              <Pressable style={styles.saveBtn} onPress={onSaveEdit}>
-                <Text style={styles.saveText}>Save</Text>
+              <Pressable style={[styles.primary, { flex: 1 }]} onPress={onSave}>
+                <Text style={styles.primaryText}>Save</Text>
               </Pressable>
             </View>
-          </Pressable>
+          </View>
+        ) : null}
+
+        <View style={{ marginTop: 12, gap: 10 }}>
+          {list.length === 0 ? (
+            <Text style={styles.empty}>No members yet.</Text>
+          ) : (
+            list.map((u) => (
+              <View key={u.userId} style={styles.row}>
+                <Pressable style={{ flex: 1 }} onPress={() => pick(u)}>
+                  <Text style={styles.name}>{u.name}</Text>
+                  <Text style={styles.meta}>
+                    {u.role} • {u.phone} {u.email ? `• ${u.email}` : ""}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.delBtn} onPress={() => onDelete(u)}>
+                  <Text style={styles.delText}>Delete</Text>
+                </Pressable>
+              </View>
+            ))
+          )}
+        </View>
+
+        <Pressable style={styles.softBtn} onPress={() => refreshMembers()}>
+          <Text style={styles.softText}>Refresh</Text>
         </Pressable>
-      </Modal>
+      </View>
     </ScrollView>
   );
 }
@@ -149,98 +110,82 @@ export default function MemberManagerScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f4f6fb" },
   container: { padding: 16, paddingBottom: 28 },
-
   card: {
-    backgroundColor: "rgba(255,255,255,0.82)",
+    backgroundColor: "rgba(255,255,255,0.85)",
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
-    borderRadius: 24,
+    borderColor: "rgba(15,23,42,0.12)",
+    borderRadius: 26,
     padding: 16,
   },
+  kicker: { fontSize: 11, letterSpacing: 2.5, color: "#64748b", fontWeight: "900" },
+  title: { marginTop: 6, fontSize: 22, fontWeight: "900", color: "#0f172a" },
+  sub: { marginTop: 6, fontSize: 13, color: "#586174", fontWeight: "700" },
 
-  kicker: { fontSize: 11, letterSpacing: 2.5, color: "#64748b", textAlign: "center" },
-  title: { marginTop: 8, fontSize: 22, fontWeight: "900", color: "#0f172a", textAlign: "center" },
-  sub: { marginTop: 6, fontSize: 13, color: "#586174", textAlign: "center" },
-
-  empty: { alignItems: "center", justifyContent: "center", paddingVertical: 22, gap: 8 },
-  emptyText: { color: "#586174", fontWeight: "800" },
+  editBox: {
+    marginTop: 12,
+    borderRadius: 20,
+    padding: 12,
+    backgroundColor: "rgba(15,23,42,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.10)",
+  },
+  editTitle: { fontWeight: "900", color: "#0f172a" },
+  input: {
+    marginTop: 8,
+    height: 46,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.10)",
+    color: "#0f172a",
+    fontWeight: "800",
+  },
 
   row: {
     flexDirection: "row",
-    alignItems: "center",
     gap: 10,
     padding: 12,
     borderRadius: 18,
     backgroundColor: "rgba(255,255,255,0.92)",
     borderWidth: 1,
     borderColor: "rgba(15,23,42,0.10)",
-  },
-  rowTitle: { fontWeight: "900", color: "#0f172a" },
-  rowSub: { marginTop: 2, color: "#586174", fontWeight: "700", fontSize: 12 },
-
-  smallBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: "rgba(15,23,42,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
     alignItems: "center",
-    justifyContent: "center",
   },
-  smallBtnDanger: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: "rgba(255, 99, 132, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 99, 132, 0.28)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  name: { fontWeight: "900", color: "#0f172a" },
+  meta: { marginTop: 2, color: "#64748b", fontWeight: "800", fontSize: 12 },
 
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", padding: 16, justifyContent: "center" },
-  modal: {
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderRadius: 24,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
-  },
-  modalTitle: { fontSize: 18, fontWeight: "900", color: "#0f172a" },
-  modalSub: { marginTop: 4, fontSize: 12, color: "#586174" },
-
-  label: { fontSize: 12, fontWeight: "900", color: "#0f172a", marginBottom: 6 },
-  input: {
-    height: 48,
-    borderRadius: 16,
+  delBtn: {
+    height: 36,
     paddingHorizontal: 12,
-    backgroundColor: "rgba(255,255,255,0.92)",
+    borderRadius: 14,
+    backgroundColor: "rgba(239,68,68,0.10)",
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
-    color: "#0f172a",
-    fontWeight: "700",
-  },
-
-  cancelBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: "rgba(15,23,42,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
-  },
-  cancelText: { fontWeight: "900", color: "#0f172a" },
-
-  saveBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: "rgba(15, 23, 42, 0.92)",
+    borderColor: "rgba(239,68,68,0.22)",
     alignItems: "center",
     justifyContent: "center",
   },
-  saveText: { fontWeight: "900", color: "white" },
+  delText: { color: "#b91c1c", fontWeight: "900" },
+
+  empty: { marginTop: 10, color: "#64748b", fontWeight: "800" },
+
+  softBtn: {
+    marginTop: 14,
+    height: 48,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15,23,42,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.12)",
+  },
+  softText: { color: "#0f172a", fontWeight: "900" },
+  primary: {
+    height: 48,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0f172a",
+  },
+  primaryText: { color: "white", fontWeight: "900" },
 });

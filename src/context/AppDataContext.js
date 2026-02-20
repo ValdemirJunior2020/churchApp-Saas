@@ -1,317 +1,296 @@
-// src/context/AppDataContext.js
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+// src/context/AppDataContext.js  (REPLACE)
+import React, { createContext, useContext, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { gasGet, gasPost } from "../api/gasClient";
+import { GAS_URL } from "../config";
 
 const AppDataContext = createContext(null);
 
-const CACHE_KEYS = {
-  CONFIG: "@cache_config_v3",
-  DONATIONS: "@cache_donations_v3",
-  MEMBERS: "@cache_members_v3",
-  EVENTS: "@cache_events_v3",
-};
+const STORAGE_SESSION = "@church_saas_session_v2";
 
-const DEFAULT_CONFIG = {
-  configId: "main",
-  churchName: "SANCTUARY",
-  address: "",
-  logoUrl: "",
-  youtubeVideoId: "",
-  themePrimaryHex: "#0f172a",
-  themeAccentHex: "#94a3b8",
-  donationLinks: [],
-};
-
-function normalizeBool(v) {
-  if (typeof v === "boolean") return v;
-  const s = String(v ?? "").toLowerCase().trim();
-  return s === "true" || s === "1" || s === "yes" || s === "y";
+function nowISO() {
+  return new Date().toISOString();
 }
 
-function toInt(v, fallback = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+function isIsoInFuture(iso) {
+  const s = String(iso || "").trim();
+  if (!s) return false;
+  const t = new Date(s).getTime();
+  if (Number.isNaN(t)) return false;
+  return t > Date.now();
 }
 
-function normalizeDonationRows(rows) {
-  const list = Array.isArray(rows) ? rows : [];
-  return list
-    .map((d) => ({
-      donationId: String(d.donationId || "").trim(),
-      label: String(d.label || "").trim(),
-      url: String(d.url || "").trim(),
-      provider: String(d.provider || "").trim(),
-      sortOrder: toInt(d.sortOrder, 0),
-      isActive: normalizeBool(d.isActive),
-      createdAt: d.createdAt || "",
-      updatedAt: d.updatedAt || "",
-    }))
-    .filter((d) => d.label && d.url && d.isActive !== false)
-    .sort((a, b) => a.sortOrder - b.sortOrder);
-}
+async function callApi({ resource, action, method = "GET", params = {}, body }) {
+  const url = new URL(GAS_URL);
+  url.searchParams.set("resource", resource);
+  url.searchParams.set("action", action);
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && String(v).length) url.searchParams.set(k, String(v));
+  });
 
-function normalizeMembers(rows) {
-  const list = Array.isArray(rows) ? rows : [];
-  return list
-    .map((m) => ({
-      memberId: String(m.memberId || "").trim(),
-      role: String(m.role || "MEMBER").trim().toUpperCase(),
-      name: String(m.name || "").trim(),
-      phone: String(m.phone || "").trim(),
-      email: String(m.email || "").trim(),
-      password: String(m.password || ""),
-      isActive: normalizeBool(m.isActive),
-      createdAt: m.createdAt || "",
-      updatedAt: m.updatedAt || "",
-      lastLoginAt: m.lastLoginAt || "",
-    }))
-    .filter((m) => m.memberId && m.isActive !== false);
-}
+  const res = await fetch(url.toString(), {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
 
-function normalizeEvents(rows) {
-  const list = Array.isArray(rows) ? rows : [];
-  return list
-    .map((e) => ({
-      eventId: String(e.eventId || "").trim(),
-      title: String(e.title || "").trim(),
-      dateTimeISO: String(e.dateTimeISO || "").trim(),
-      location: String(e.location || "").trim(),
-      description: String(e.description || "").trim(),
-      isActive: normalizeBool(e.isActive),
-      createdAt: e.createdAt || "",
-      updatedAt: e.updatedAt || "",
-    }))
-    .filter((e) => e.eventId && e.isActive !== false)
-    .sort((a, b) => (a.dateTimeISO || "").localeCompare(b.dateTimeISO || ""));
-}
-
-async function cacheSet(key, value) {
+  const text = await res.text();
+  let json;
   try {
-    await AsyncStorage.setItem(key, JSON.stringify(value ?? null));
-  } catch {}
-}
-async function cacheGet(key) {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
+    json = JSON.parse(text);
   } catch {
-    return null;
+    throw new Error(text?.slice(0, 200) || "Invalid response");
   }
+  if (!json.ok) throw new Error(json.error || "Request failed");
+  return json.data;
 }
 
 export function AppDataProvider({ children }) {
-  const [isHydrating, setIsHydrating] = useState(true);
+  const [tenant, setTenant] = useState(null);
+  const [user, setUser] = useState(null);
 
-  const [churchConfig, setChurchConfig] = useState(DEFAULT_CONFIG);
-  const [members, setMembers] = useState([]);
+  const [config, setConfig] = useState(null);
+  const [donations, setDonations] = useState([]);
   const [events, setEvents] = useState([]);
+  const [members, setMembers] = useState([]);
 
-  async function refreshConfig() {
-    const [cfg, don] = await Promise.all([gasGet("CONFIG"), gasGet("DONATIONS")]);
-    const donationLinks = normalizeDonationRows(don);
+  const churchId = tenant?.churchId || null;
 
-    const nextCfg = {
-      ...DEFAULT_CONFIG,
-      ...(cfg || {}),
-      configId: String((cfg && cfg.configId) || "main"),
-      churchName: String((cfg && cfg.churchName) || DEFAULT_CONFIG.churchName),
-      address: String((cfg && cfg.address) || ""),
-      logoUrl: String((cfg && cfg.logoUrl) || ""),
-      youtubeVideoId: String((cfg && cfg.youtubeVideoId) || ""),
-      themePrimaryHex: String((cfg && cfg.themePrimaryHex) || DEFAULT_CONFIG.themePrimaryHex),
-      themeAccentHex: String((cfg && cfg.themeAccentHex) || DEFAULT_CONFIG.themeAccentHex),
-      donationLinks,
-    };
+  const canUseApp = useMemo(() => {
+    if (!tenant) return false;
+    const status = String(tenant.planStatus || "").toUpperCase();
+    if (status === "ACTIVE") return true;
+    if (status === "TRIAL") return isIsoInFuture(tenant.trialEndsAt);
+    return false;
+  }, [tenant]);
 
-    setChurchConfig(nextCfg);
-    await Promise.all([
-      cacheSet(CACHE_KEYS.CONFIG, nextCfg),
-      cacheSet(CACHE_KEYS.DONATIONS, donationLinks),
-    ]);
-    return nextCfg;
-  }
-
-  async function refreshMembers() {
-    const list = normalizeMembers(await gasGet("MEMBERS"));
-    setMembers(list);
-    await cacheSet(CACHE_KEYS.MEMBERS, list);
-    return list;
-  }
-
-  async function refreshEvents() {
-    const list = normalizeEvents(await gasGet("EVENTS"));
-    setEvents(list);
-    await cacheSet(CACHE_KEYS.EVENTS, list);
-    return list;
-  }
-
-  async function refreshAll() {
-    await Promise.all([refreshConfig(), refreshMembers(), refreshEvents()]);
-  }
-
-  async function seedFromCacheFast() {
-    const [cfg, dons, mems, evs] = await Promise.all([
-      cacheGet(CACHE_KEYS.CONFIG),
-      cacheGet(CACHE_KEYS.DONATIONS),
-      cacheGet(CACHE_KEYS.MEMBERS),
-      cacheGet(CACHE_KEYS.EVENTS),
-    ]);
-
-    if (cfg) {
-      setChurchConfig({
-        ...DEFAULT_CONFIG,
-        ...(cfg || {}),
-        donationLinks: Array.isArray(dons) ? dons : cfg.donationLinks || [],
-      });
+  // ---- SESSION ----
+  async function restoreSession() {
+    const raw = await AsyncStorage.getItem(STORAGE_SESSION);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (s?.tenant && s?.user) {
+      setTenant(s.tenant);
+      setUser(s.user);
+      return s;
     }
-    if (Array.isArray(mems)) setMembers(mems);
-    if (Array.isArray(evs)) setEvents(evs);
+    return null;
   }
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      await seedFromCacheFast();
-      try {
-        await refreshAll();
-      } catch {
-        // keep cached state
-      } finally {
-        if (alive) setIsHydrating(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+  async function saveSession(nextTenant, nextUser) {
+    setTenant(nextTenant);
+    setUser(nextUser);
+    await AsyncStorage.setItem(
+      STORAGE_SESSION,
+      JSON.stringify({ tenant: nextTenant, user: nextUser, savedAt: nowISO() })
+    );
+  }
 
-  const api = useMemo(() => {
-    return {
-      isHydrating,
-      churchConfig,
-      members,
+  async function clearSession() {
+    setTenant(null);
+    setUser(null);
+    setConfig(null);
+    setDonations([]);
+    setEvents([]);
+    setMembers([]);
+    await AsyncStorage.removeItem(STORAGE_SESSION);
+  }
+
+  // ---- AUTH / TENANT ----
+  async function getTenantByInviteCode(inviteCode) {
+    return callApi({
+      resource: "tenants",
+      action: "getByInviteCode",
+      method: "GET",
+      params: { inviteCode },
+    });
+  }
+
+  async function createTenant({ churchName, ownerEmail }) {
+    // 14-day trial by default
+    const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    return callApi({
+      resource: "tenants",
+      action: "create",
+      method: "POST",
+      body: {
+        churchName,
+        ownerEmail,
+        planName: "Standard",
+        planPriceUSD: 45,
+        planStatus: "TRIAL",
+        trialEndsAt,
+        billingProvider: "PAYPAL",
+      },
+    });
+  }
+
+  async function signupUser({ inviteCode, churchId, role, name, phone, email, password }) {
+    return callApi({
+      resource: "users",
+      action: "signup",
+      method: "POST",
+      body: { inviteCode, churchId, role, name, phone, email, password },
+    });
+  }
+
+  async function login({ inviteCode, identifier, password }) {
+    const data = await callApi({
+      resource: "users",
+      action: "login",
+      method: "POST",
+      body: { inviteCode, identifier, password },
+    });
+
+    await saveSession(data.tenant, data.user);
+
+    // Load church data right away
+    await refreshChurchData(data.tenant.churchId);
+
+    return data;
+  }
+
+  // ---- CHURCH DATA ----
+  async function refreshChurchData(chId = churchId) {
+    if (!chId) return;
+
+    const [cfg, dons, evts] = await Promise.all([
+      callApi({ resource: "config", action: "get", method: "GET", params: { churchId: chId } }),
+      callApi({ resource: "donations", action: "list", method: "GET", params: { churchId: chId } }),
+      callApi({ resource: "events", action: "list", method: "GET", params: { churchId: chId } }),
+    ]);
+
+    setConfig(cfg);
+    setDonations(Array.isArray(dons) ? dons : []);
+    setEvents(Array.isArray(evts) ? evts : []);
+  }
+
+  // ---- ADMIN: USERS ----
+  async function refreshMembers(chId = churchId) {
+    if (!chId) return;
+    const list = await callApi({
+      resource: "users",
+      action: "list",
+      method: "GET",
+      params: { churchId: chId },
+    });
+    setMembers(Array.isArray(list) ? list : []);
+  }
+
+  async function updateMember(patch) {
+    if (!churchId) throw new Error("Missing churchId");
+    const updated = await callApi({
+      resource: "users",
+      action: "update",
+      method: "POST",
+      body: { churchId, ...patch },
+    });
+    await refreshMembers(churchId);
+    return updated;
+  }
+
+  async function deleteMember(userId) {
+    if (!churchId) throw new Error("Missing churchId");
+    const updated = await callApi({
+      resource: "users",
+      action: "delete",
+      method: "POST",
+      body: { churchId, userId },
+    });
+    await refreshMembers(churchId);
+    return updated;
+  }
+
+  // ---- ADMIN: CONFIG ----
+  async function saveConfig(patch) {
+    if (!churchId) throw new Error("Missing churchId");
+    const updated = await callApi({
+      resource: "config",
+      action: "upsert",
+      method: "POST",
+      body: { churchId, ...patch },
+    });
+    setConfig(updated);
+    return updated;
+  }
+
+  // ---- ADMIN: DONATIONS ----
+  async function addDonation({ label, url, provider }) {
+    if (!churchId) throw new Error("Missing churchId");
+    const sortOrder = (donations?.length || 0) + 1;
+    await callApi({
+      resource: "donations",
+      action: "add",
+      method: "POST",
+      body: { churchId, label, url, provider, sortOrder },
+    });
+    await refreshChurchData(churchId);
+  }
+
+  async function removeDonation(donationId) {
+    if (!churchId) throw new Error("Missing churchId");
+    await callApi({
+      resource: "donations",
+      action: "delete",
+      method: "POST",
+      body: { churchId, donationId },
+    });
+    await refreshChurchData(churchId);
+  }
+
+  // ---- ADMIN: EVENTS (optional) ----
+  async function addEvent({ title, dateTimeISO, location, description }) {
+    if (!churchId) throw new Error("Missing churchId");
+    await callApi({
+      resource: "events",
+      action: "add",
+      method: "POST",
+      body: { churchId, title, dateTimeISO, location, description },
+    });
+    await refreshChurchData(churchId);
+  }
+
+  const value = useMemo(
+    () => ({
+      tenant,
+      user,
+      churchId,
+
+      canUseApp,
+
+      config,
+      donations,
       events,
+      members,
 
-      refreshAll,
-      refreshConfig,
+      restoreSession,
+      saveSession,
+      clearSession,
+
+      getTenantByInviteCode,
+      createTenant,
+      signupUser,
+      login,
+
+      refreshChurchData,
       refreshMembers,
-      refreshEvents,
 
-      async updateChurchConfig(patch) {
-        const safePatch = { configId: "main", ...(patch || {}) };
-        await gasPost("CONFIG", safePatch);
-        return refreshConfig();
-      },
+      updateMember,
+      deleteMember,
 
-      async saveDonationLinks(links) {
-        const clean = (Array.isArray(links) ? links : [])
-          .map((d, idx) => ({
-            donationId: String(d.donationId || "").trim(),
-            label: String(d.label || "").trim(),
-            url: String(d.url || "").trim(),
-            provider: String(d.provider || "").trim(),
-            sortOrder: Number.isFinite(Number(d.sortOrder)) ? Number(d.sortOrder) : idx + 1,
-            isActive: d.isActive === undefined ? true : normalizeBool(d.isActive),
-          }))
-          .filter((d) => d.label && d.url);
+      saveConfig,
+      addDonation,
+      removeDonation,
 
-        const current = normalizeDonationRows(await gasGet("DONATIONS"));
-        const keepIds = new Set(clean.filter((x) => x.donationId).map((x) => x.donationId));
+      addEvent,
+    }),
+    [tenant, user, churchId, canUseApp, config, donations, events, members]
+  );
 
-        await Promise.all(
-          current
-            .filter((c) => c.donationId && !keepIds.has(c.donationId))
-            .map((c) => gasPost("DONATIONS", {}, { action: "delete", id: c.donationId }))
-        );
-
-        for (const d of clean) {
-          await gasPost("DONATIONS", {
-            donationId: d.donationId || undefined,
-            label: d.label,
-            url: d.url,
-            provider: d.provider,
-            sortOrder: d.sortOrder,
-            isActive: d.isActive,
-          });
-        }
-
-        return refreshConfig();
-      },
-
-      async addMember({ name, phone, password, email }) {
-        const cleanName = String(name || "").trim();
-        const cleanPhone = String(phone || "").trim();
-        const cleanPassword = String(password || "").trim();
-        const cleanEmail = String(email || "").trim();
-
-        if (!cleanName || !cleanPhone || !cleanPassword) throw new Error("Missing fields.");
-
-        const latest = await refreshMembers();
-        if (latest.some((m) => m.phone === cleanPhone)) throw new Error("Phone already registered.");
-
-        const created = await gasPost("MEMBERS", {
-          role: "MEMBER",
-          name: cleanName,
-          phone: cleanPhone,
-          email: cleanEmail,
-          password: cleanPassword,
-          isActive: true,
-        });
-
-        await refreshMembers();
-        return created;
-      },
-
-      async updateMember(memberId, patch) {
-        const id = String(memberId || "").trim();
-        if (!id) throw new Error("Missing memberId");
-        await gasPost("MEMBERS", { memberId: id, ...(patch || {}) });
-        await refreshMembers();
-        return true;
-      },
-
-      async deleteMember(memberId) {
-        const id = String(memberId || "").trim();
-        if (!id) throw new Error("Missing memberId");
-        await gasPost("MEMBERS", {}, { action: "delete", id });
-        await refreshMembers();
-        return true;
-      },
-
-      // ✅ EVENTS CRUD
-      async upsertEvent(eventPatch) {
-        const patch = {
-          eventId: eventPatch?.eventId ? String(eventPatch.eventId).trim() : undefined,
-          title: String(eventPatch?.title || "").trim(),
-          dateTimeISO: String(eventPatch?.dateTimeISO || "").trim(),
-          location: String(eventPatch?.location || "").trim(),
-          description: String(eventPatch?.description || "").trim(),
-          isActive: eventPatch?.isActive === undefined ? true : normalizeBool(eventPatch.isActive),
-        };
-
-        if (!patch.title) throw new Error("Event title is required.");
-
-        const saved = await gasPost("EVENTS", patch);
-        await refreshEvents();
-        return saved;
-      },
-
-      async deleteEvent(eventId) {
-        const id = String(eventId || "").trim();
-        if (!id) throw new Error("Missing eventId");
-        await gasPost("EVENTS", {}, { action: "delete", id });
-        await refreshEvents();
-        return true;
-      },
-    };
-  }, [isHydrating, churchConfig, members, events]);
-
-  return <AppDataContext.Provider value={api}>{children}</AppDataContext.Provider>;
+  return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }
 
 export function useAppData() {
   const ctx = useContext(AppDataContext);
-  if (!ctx) throw new Error("useAppData must be used within AppDataProvider");
+  if (!ctx) throw new Error("useAppData must be used inside AppDataProvider");
   return ctx;
 }
