@@ -2,117 +2,102 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Congregate • Subscribe</title>
 
     <style>
-      :root {
-        --bg1: #0b1220;
-        --bg2: #0f172a;
-        --stroke: rgba(255, 255, 255, 0.14);
-        --text: #eaf2ff;
-        --muted: rgba(234, 242, 255, 0.72);
-        --ok: rgba(34, 197, 94, 0.18);
-        --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      :root{
+        --bg1:#0b1220; --bg2:#0f172a;
+        --stroke:rgba(255,255,255,.14);
+        --text:#eaf2ff; --muted:rgba(234,242,255,.72);
+        --ok:rgba(34,197,94,.18);
+        --shadow:0 20px 60px rgba(0,0,0,.35);
       }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-        color: var(--text);
+      *{box-sizing:border-box}
+      body{
+        margin:0;
+        font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+        color:var(--text);
         background:
-          radial-gradient(900px 500px at 20% 0%, rgba(96, 165, 250, 0.18), transparent 55%),
-          radial-gradient(900px 500px at 80% 20%, rgba(37, 99, 235, 0.18), transparent 55%),
-          linear-gradient(180deg, var(--bg1), var(--bg2));
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        padding: 18px;
+          radial-gradient(900px 500px at 20% 0%, rgba(96,165,250,.18), transparent 55%),
+          radial-gradient(900px 500px at 80% 20%, rgba(37,99,235,.18), transparent 55%),
+          linear-gradient(180deg,var(--bg1),var(--bg2));
+        min-height:100vh;
+        display:grid;
+        place-items:center;
+        padding:18px;
       }
-      .wrap { width: min(560px, 100%); display: grid; gap: 14px; }
-      .card {
-        border-radius: 26px;
-        background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.06));
-        border: 1px solid var(--stroke);
-        box-shadow: var(--shadow);
-        overflow: hidden;
+      .wrap{width:min(560px,100%);display:grid;gap:14px}
+      .card{
+        border-radius:26px;
+        background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+        border:1px solid var(--stroke);
+        box-shadow:var(--shadow);
+        overflow:hidden;
       }
-      .top {
-        padding: 18px 18px 10px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
+      .top{
+        padding:18px 18px 10px;
+        display:flex;align-items:center;justify-content:space-between;gap:12px
       }
-      .badge {
-        font-size: 12px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        border: 1px solid var(--stroke);
-        background: rgba(255,255,255,0.06);
-        color: var(--muted);
+      .badge{
+        font-size:12px;
+        padding:6px 10px;
+        border-radius:999px;
+        border:1px solid var(--stroke);
+        background:rgba(255,255,255,.06);
+        color:var(--muted);
       }
-      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New"; }
-      .title { padding: 0 18px 16px; }
-      h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: 0.2px; }
-      .sub { color: var(--muted); font-size: 14px; line-height: 1.35; }
-      .status, .debug {
-        margin: 0 18px 12px;
-        padding: 10px 12px;
-        border-radius: 14px;
-        border: 1px solid var(--stroke);
-        background: rgba(255,255,255,0.06);
-        color: var(--muted);
-        font-size: 13px;
-        overflow-wrap: anywhere;
+      .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New"}
+      .title{padding:0 18px 16px}
+      h1{font-size:22px;margin:0 0 6px;letter-spacing:.2px}
+      .sub{color:var(--muted);font-size:14px;line-height:1.35}
+      .status,.debug{
+        margin:0 18px 12px;
+        padding:10px 12px;
+        border-radius:14px;
+        border:1px solid var(--stroke);
+        background:rgba(255,255,255,.06);
+        color:var(--muted);
+        font-size:13px;
+        overflow-wrap:anywhere;
       }
-      .status.ok {
-        background: rgba(34,197,94,0.12);
-        border-color: rgba(34,197,94,0.35);
-        color: rgba(220,255,235,0.92);
+      .status.ok{
+        background:rgba(34,197,94,.12);
+        border-color:rgba(34,197,94,.35);
+        color:rgba(220,255,235,.92);
       }
-      .debug { font-size: 12px; opacity: 0.9; }
-      .pay { padding: 10px 18px 18px; display: grid; gap: 10px; }
-      .small { font-size: 12px; color: rgba(234,242,255,0.62); line-height: 1.35; }
-      .hint { padding: 0 18px 12px; color: rgba(234,242,255,0.55); font-size: 12px; }
-      .divider { height: 1px; background: rgba(255,255,255,0.10); margin: 10px 0; }
+      .debug{font-size:12px;opacity:.9}
+      .pay{padding:16px 18px 18px;display:grid;gap:10px}
+      .small{font-size:12px;color:rgba(234,242,255,.62);line-height:1.35}
+      .row{display:flex;gap:10px;flex-wrap:wrap}
+      .btn{
+        appearance:none;
+        border:1px solid var(--stroke);
+        background:rgba(255,255,255,.06);
+        color:var(--text);
+        border-radius:14px;
+        padding:10px 12px;
+        font-weight:700;
+        cursor:pointer;
+      }
+      .btnPrimary{
+        border-color:rgba(96,165,250,.45);
+        background:linear-gradient(180deg, rgba(37,99,235,.9), rgba(37,99,235,.55));
+      }
+      .hidden{display:none}
     </style>
-
-    <script>
-      // ✅ IMPORTANT: Netlify is STATIC — PHP-style <?= ... ?> will NEVER work.
-      // Put real values here (Client ID is OK to be public; SECRET must stay in Apps Script).
-      const PAYPAL_ENV = "sandbox"; // "sandbox" or "live"
-      const PAYPAL_CLIENT_ID = "AZ7mlhDpkJL7mBzejngbl14Bi4hinfwvTnibXhMt95ly2uXCCvjz1";
-      const PAYPAL_PLAN_ID   = "P-41N14780YJ3340634NGMQVZI";  // Must start with P-...
-      const CURRENCY         = "USD";
-
-      // Your Apps Script web app EXEC URL (same one you call in PowerShell)
-      const EXEC_URL = "PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE"; // https://script.google.com/macros/s/.../exec
-
-      // App deep link scheme (Expo)
-      const APP_SCHEME = "congregate";
-
-      // Build PayPal SDK script URL
-      const SDK_SRC =
-        "https://www.paypal.com/sdk/js?client-id=" +
-        encodeURIComponent(PAYPAL_CLIENT_ID) +
-        "&vault=true&intent=subscription&currency=" +
-        encodeURIComponent(CURRENCY) +
-        "&components=buttons";
-      // We'll inject it after we validate sessionId exists
-    </script>
   </head>
 
   <body>
     <div class="wrap">
       <div class="card">
         <div class="top">
-          <div class="badge">Secure subscription • <span id="env">…</span></div>
-          <div class="badge mono">session: <span id="sidBadge">MISSING</span></div>
+          <div id="envBadge" class="badge">Secure subscription</div>
+          <div id="sessionBadge" class="badge mono">session: …</div>
         </div>
 
         <div class="title">
-          <h1>Activate Your Church</h1>
+          <h1 id="title">Activate Your Church</h1>
           <div class="sub">
             After payment, your Pastor Admin account is created automatically and you’ll be sent back into the app.
           </div>
@@ -120,14 +105,16 @@
 
         <div id="status" class="status">Loading…</div>
         <div id="debug" class="debug">Debug: booting…</div>
-        <div class="hint">
-          If you see <b>RESOURCE_NOT_FOUND</b>, it almost always means the <b>Plan ID is wrong</b> or belongs to a different sandbox business account.
-        </div>
-
-        <div class="divider"></div>
 
         <div class="pay">
           <div id="paypal-button-container"></div>
+
+          <div class="row">
+            <button class="btn" id="copyCodeBtn" type="button">Copy Church Code</button>
+            <button class="btn" id="copyEmailBtn" type="button">Copy Admin Email</button>
+            <button class="btn btnPrimary hidden" id="openAppBtn" type="button">Open App</button>
+          </div>
+
           <div class="small">
             By subscribing you agree to monthly billing and your church can cancel anytime in Pastor Settings.
           </div>
@@ -136,74 +123,149 @@
     </div>
 
     <script>
-      (function () {
+      (() => {
         "use strict";
 
         const qs = new URLSearchParams(location.search);
         const sessionId = qs.get("sessionId") || "";
+        const execUrl = qs.get("exec") || "";
 
         const statusEl = document.getElementById("status");
-        const debugEl  = document.getElementById("debug");
+        const debugEl = document.getElementById("debug");
+        const envBadge = document.getElementById("envBadge");
+        const sessionBadge = document.getElementById("sessionBadge");
+        const titleEl = document.getElementById("title");
 
-        document.getElementById("env").textContent = PAYPAL_ENV.toUpperCase();
-        document.getElementById("sidBadge").textContent = sessionId ? (sessionId.slice(0, 9) + "…") : "MISSING";
+        const copyCodeBtn = document.getElementById("copyCodeBtn");
+        const copyEmailBtn = document.getElementById("copyEmailBtn");
+        const openAppBtn = document.getElementById("openAppBtn");
 
-        function setStatus(msg, ok) {
+        function setStatus(msg, ok=false){
           statusEl.textContent = msg;
           statusEl.classList.toggle("ok", !!ok);
         }
-        function setDebug(msg) { debugEl.textContent = "Debug: " + msg; }
+        function setDebug(msg){ debugEl.textContent = "Debug: " + msg; }
 
-        if (!sessionId) {
+        function loadScript(src){
+          return new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = src;
+            s.async = true;
+            s.onload = () => resolve(true);
+            s.onerror = (e) => reject(e);
+            document.head.appendChild(s);
+          });
+        }
+
+        async function copyText(text){
+          try{
+            if(navigator.clipboard?.writeText){
+              await navigator.clipboard.writeText(text);
+              return true;
+            }
+          }catch{}
+          return false;
+        }
+
+        if(!sessionId){
+          sessionBadge.textContent = "session: MISSING";
           setStatus("❌ Missing sessionId. Go back to the app and try again.", false);
-          setDebug("No sessionId query param. Example: /checkout.html?sessionId=sess_xxx");
+          setDebug("URL must include ?sessionId=...&exec=...");
           return;
         }
 
-        // Show exactly what will be used (THIS is the #1 cause of your error)
-        setDebug("planId=" + PAYPAL_PLAN_ID + " | clientId=" + PAYPAL_CLIENT_ID.slice(0, 10) + "… | exec=" + EXEC_URL);
+        if(!execUrl){
+          sessionBadge.textContent = "session: " + sessionId.slice(0, 10) + "…";
+          setStatus("❌ Missing exec URL. Use the checkoutUrl returned by your API.", false);
+          setDebug("URL must include &exec=YOUR_APPS_SCRIPT_EXEC_URL");
+          return;
+        }
 
-        // Inject PayPal SDK
-        const s = document.createElement("script");
-        s.src = SDK_SRC;
-        s.async = true;
-        s.onload = () => bootPaypal();
-        s.onerror = () => {
-          setStatus("❌ PayPal SDK blocked (adblock/extension). Try Incognito.", false);
-          setDebug("Failed to load " + SDK_SRC);
-        };
-        document.head.appendChild(s);
+        sessionBadge.textContent = "session: " + sessionId.slice(0, 10) + "…";
+        setStatus("Loading session…", false);
+        setDebug("exec=" + execUrl);
 
-        function bootPaypal() {
-          if (!window.paypal || !paypal.Buttons) {
-            setStatus("❌ PayPal SDK loaded but Buttons missing.", false);
+        // ✅ 1) Load config as a SCRIPT (no CORS)
+        const cfgUrl = execUrl + "?resource=billing&action=sessionJs&sessionId=" + encodeURIComponent(sessionId);
+
+        loadScript(cfgUrl).then(async () => {
+          const cfg = window.CONGREGATE_CHECKOUT;
+
+          if(!cfg || !cfg.ok){
+            setStatus("❌ Session not found on server. Start checkout again.", false);
+            setDebug("sessionJs returned missing/invalid payload");
+            return;
+          }
+
+          envBadge.textContent = "Secure subscription • " + String(cfg.env || "").toUpperCase();
+          titleEl.textContent = "Activate " + (cfg.churchName || "Your Church");
+
+          copyCodeBtn.onclick = async () => {
+            const ok = await copyText(cfg.churchCode || "");
+            setStatus(ok ? "Church Code copied ✅" : "Copy blocked by browser (ok).", ok);
+          };
+          copyEmailBtn.onclick = async () => {
+            const ok = await copyText(cfg.adminEmail || "");
+            setStatus(ok ? "Admin Email copied ✅" : "Copy blocked by browser (ok).", ok);
+          };
+          openAppBtn.onclick = () => { location.href = cfg.deepLink || ""; };
+
+          // ✅ 2) Load PayPal SDK dynamically with REAL clientId
+          if(!cfg.clientId || !cfg.planId){
+            setStatus("❌ Missing clientId/planId from server. Check Script Properties.", false);
+            setDebug("clientId=" + (cfg.clientId || "MISSING") + " | planId=" + (cfg.planId || "MISSING"));
+            return;
+          }
+
+          const sdk =
+            "https://www.paypal.com/sdk/js" +
+            "?client-id=" + encodeURIComponent(cfg.clientId) +
+            "&vault=true&intent=subscription" +
+            "&currency=" + encodeURIComponent(cfg.currency || "USD") +
+            "&components=buttons";
+
+          setStatus("Loading PayPal…", false);
+          setDebug("clientId OK | planId=" + cfg.planId);
+
+          try{
+            await loadScript(sdk);
+          }catch(e){
+            setStatus("❌ PayPal SDK failed to load (blocked). Try Incognito.", false);
+            setDebug("SDK load failed: " + String(e?.message || e));
+            return;
+          }
+
+          if(!window.paypal?.Buttons){
+            setStatus("❌ PayPal Buttons unavailable. Try Incognito / disable extensions.", false);
             setDebug("window.paypal missing Buttons");
             return;
           }
 
+          // ✅ 3) Render PayPal subscription buttons
           setStatus("✅ Ready. Click Subscribe.", true);
 
-          const btn = paypal.Buttons({
+          paypal.Buttons({
             style: { layout: "vertical", shape: "pill", label: "subscribe" },
 
             createSubscription: (data, actions) => {
               setStatus("Creating subscription…", false);
-              // custom_id can be used for matching later; sessionId is great for this
               return actions.subscription.create({
-                plan_id: PAYPAL_PLAN_ID,
-                custom_id: sessionId
+                plan_id: cfg.planId,
+                custom_id: cfg.churchCode
               });
             },
 
             onApprove: (data) => {
-              setStatus("Finalizing… saving to Google Sheets…", false);
+              setStatus("Finalizing… saving to Google Sheets. Please wait...", false);
 
-              // Avoid CORS by using a standard HTML form POST (not fetch)
+              // ✅ No CORS: POST as a FORM to Apps Script
               const form = document.createElement("form");
               form.method = "POST";
-              form.action = EXEC_URL + "?resource=billing&action=complete";
+              form.action = execUrl;
 
               const payload = {
+                resource: "billing",
+                action: "complete",
                 sessionId: sessionId,
                 subscriptionId: data.subscriptionID,
                 returnHtml: "1"
@@ -222,18 +284,16 @@
             },
 
             onError: (err) => {
-              setStatus("❌ PayPal error. See debug.", false);
-              setDebug((err && err.message) ? err.message : JSON.stringify(err));
+              setStatus("❌ PayPal error. Check debug.", false);
+              setDebug(String(err?.message || err));
               console.error(err);
             }
-          });
+          }).render("#paypal-button-container");
 
-          btn.render("#paypal-button-container").catch((err) => {
-            setStatus("❌ Render failed. See debug.", false);
-            setDebug((err && err.message) ? err.message : JSON.stringify(err));
-            console.error(err);
-          });
-        }
+        }).catch((e) => {
+          setStatus("❌ Could not load session config from server.", false);
+          setDebug("sessionJs load error: " + String(e?.message || e));
+        });
       })();
     </script>
   </body>
