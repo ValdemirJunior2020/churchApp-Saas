@@ -1,0 +1,149 @@
+<!-- ✅ PUT THIS FILE IN YOUR NETLIFY SITE: /public/checkout.html -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Congregate • Subscribe</title>
+
+    <style>
+      :root {
+        --bg1:#0b1220; --bg2:#0f172a;
+        --stroke:rgba(255,255,255,.14);
+        --text:#eaf2ff; --muted:rgba(234,242,255,.72);
+        --ok:rgba(34,197,94,.18);
+        --shadow:0 20px 60px rgba(0,0,0,.35);
+      }
+      *{box-sizing:border-box}
+      body{
+        margin:0;
+        font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+        color:var(--text);
+        background:
+          radial-gradient(900px 500px at 20% 0%, rgba(96,165,250,.18), transparent 55%),
+          radial-gradient(900px 500px at 80% 20%, rgba(37,99,235,.18), transparent 55%),
+          linear-gradient(180deg,var(--bg1),var(--bg2));
+        min-height:100vh;
+        display:grid;
+        place-items:center;
+        padding:18px;
+      }
+      .wrap{width:min(560px,100%);display:grid;gap:14px}
+      .card{
+        border-radius:26px;
+        background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.06));
+        border:1px solid var(--stroke);
+        box-shadow:var(--shadow);
+        overflow:hidden;
+      }
+      .top{padding:18px 18px 10px;display:flex;justify-content:space-between;gap:12px;align-items:center}
+      .badge{font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid var(--stroke);background:rgba(255,255,255,.06);color:var(--muted)}
+      .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New"}
+      .title{padding:0 18px 16px}
+      h1{font-size:22px;margin:0 0 6px}
+      .sub{color:var(--muted);font-size:14px;line-height:1.35}
+      .status{margin:0 18px 12px;padding:10px 12px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.06);color:var(--muted);font-size:13px}
+      .status.ok{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.35);color:rgba(220,255,235,.92)}
+      .pay{padding:16px 18px 18px;display:grid;gap:10px}
+      .small{font-size:12px;color:rgba(234,242,255,.62);line-height:1.35}
+    </style>
+
+    <!-- ✅ PayPal SDK (sandbox) -->
+    <script src="https://www.paypal.com/sdk/js?client-id=AZ7mlhDpkJL7mBzejngbl14Bi4hinfwvTnibXhMt95ly2uXCCvjz1-LGo40_4gL3W-ZtqeSkg5zcrQEr&vault=true&intent=subscription&currency=USD&components=buttons"></script>
+  </head>
+
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <div class="top">
+          <div class="badge">Secure subscription • SANDBOX</div>
+          <div class="badge mono" id="sid">session: —</div>
+        </div>
+
+        <div class="title">
+          <h1>Activate Your Church</h1>
+          <div class="sub">After payment, your Pastor Admin account is created automatically and you’ll be sent back into the app.</div>
+        </div>
+
+        <div id="status" class="status">Loading PayPal…</div>
+
+        <div class="pay">
+          <div id="paypal-button-container"></div>
+          <div class="small">By subscribing you agree to monthly billing and your church can cancel anytime in Pastor Settings.</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ✅ SET THESE (ONLY THESE TWO)
+      var GAS_EXEC_URL = "https://script.google.com/macros/s/AKfycbzd4egNONr_qvdUchOBD5EJSze4q8tENp3N6cl3awz2uu2BL2JB-fHIQKDz9CSFaD_d/exec";
+      var PAYPAL_PLAN_ID = "P-41N14780YJ3340634NGMQVZI"; // your sandbox plan
+
+      function qs(name) {
+        var p = new URLSearchParams(window.location.search);
+        return p.get(name) || "";
+      }
+
+      var sessionId = qs("sessionId");
+      document.getElementById("sid").textContent = "session: " + (sessionId ? sessionId.slice(0, 10) + "…" : "MISSING");
+
+      var statusEl = document.getElementById("status");
+      function setStatus(msg, ok) {
+        statusEl.textContent = msg;
+        statusEl.classList.toggle("ok", !!ok);
+      }
+
+      if (!sessionId) {
+        setStatus("❌ Missing sessionId. Go back to the app and try again.", false);
+      } else if (!window.paypal || !paypal.Buttons) {
+        setStatus("❌ PayPal SDK did not load.", false);
+      } else {
+        setStatus("✅ Ready. Click Subscribe.", true);
+
+        paypal.Buttons({
+          style: { layout: "vertical", shape: "pill", label: "subscribe" },
+
+          createSubscription: function (data, actions) {
+            setStatus("Creating subscription…", false);
+            return actions.subscription.create({ plan_id: PAYPAL_PLAN_ID });
+          },
+
+          onApprove: function (data) {
+            setStatus("Finalizing… saving to Google Sheets", false);
+
+            // ✅ NO CORS: submit a normal HTML form POST to Apps Script
+            var form = document.createElement("form");
+            form.method = "POST";
+            form.action = GAS_EXEC_URL + "?resource=billing&action=complete";
+
+            var f1 = document.createElement("input");
+            f1.type = "hidden";
+            f1.name = "sessionId";
+            f1.value = sessionId;
+            form.appendChild(f1);
+
+            var f2 = document.createElement("input");
+            f2.type = "hidden";
+            f2.name = "subscriptionId";
+            f2.value = data.subscriptionID;
+            form.appendChild(f2);
+
+            var f3 = document.createElement("input");
+            f3.type = "hidden";
+            f3.name = "returnHtml";
+            f3.value = "1";
+            form.appendChild(f3);
+
+            document.body.appendChild(form);
+            form.submit();
+          },
+
+          onError: function (err) {
+            setStatus("❌ PayPal error. Check console.", false);
+            console.error(err);
+          },
+        }).render("#paypal-button-container");
+      }
+    </script>
+  </body>
+</html>
