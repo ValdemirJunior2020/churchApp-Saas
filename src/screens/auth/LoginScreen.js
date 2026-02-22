@@ -1,5 +1,5 @@
 // src/screens/auth/LoginScreen.js
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import {
   Alert,
   Image,
@@ -13,7 +13,6 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
-import { DEMO_INVITE_CODE, DEMO_ADMIN_PHONE, DEMO_ADMIN_PASSWORD } from "../../config";
 
 const LOGO_LOCAL = require("../../logo.jpg");
 
@@ -24,16 +23,10 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [churchCode, setChurchCode] = useState(DEMO_INVITE_CODE);
-  const [emailOrPhone, setEmailOrPhone] = useState("admin@church.com");
-  const [password, setPassword] = useState(DEMO_ADMIN_PASSWORD);
-
+  const [churchCode, setChurchCode] = useState("");
+  const [emailOrPhone, setEmailOrPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-
-  const hint = useMemo(
-    () => `Admin test account: inviteCode ${DEMO_INVITE_CODE}, phone ${DEMO_ADMIN_PHONE}, password ${DEMO_ADMIN_PASSWORD}`,
-    []
-  );
 
   async function onSubmit() {
     setError("");
@@ -53,7 +46,6 @@ export default function LoginScreen() {
           password,
         });
       }
-      // ✅ no navigation call needed — AppNavigator will switch tabs when user is set
     } catch (e) {
       console.error("[AUTH] error", e);
       const msg = e?.message || "Something went wrong";
@@ -74,7 +66,7 @@ export default function LoginScreen() {
           <View style={styles.header}>
             <Image source={LOGO_LOCAL} style={styles.logo} resizeMode="contain" />
             <Text style={styles.appName}>Congregate</Text>
-            <Text style={styles.sub}>Use your Church Code + Phone/Email.</Text>
+            <Text style={styles.sub}>Members: Ask your Pastor for your Church Code to log in.</Text>
           </View>
 
           <View style={styles.segment}>
@@ -95,13 +87,22 @@ export default function LoginScreen() {
           <TextInput
             value={churchCode}
             onChangeText={setChurchCode}
-            placeholder="SANCT-001"
+            placeholder="Church Code"
             autoCapitalize="characters"
+            autoComplete="off"
+            autoCorrect={false}
             style={styles.input}
           />
 
           {mode === "signup" && (
-            <TextInput value={name} onChangeText={setName} placeholder="Full Name" style={styles.input} />
+            <TextInput 
+              value={name} 
+              onChangeText={setName} 
+              placeholder="Full Name" 
+              autoComplete="off"
+              autoCorrect={false}
+              style={styles.input} 
+            />
           )}
 
           <TextInput
@@ -109,6 +110,9 @@ export default function LoginScreen() {
             onChangeText={setEmailOrPhone}
             placeholder="Phone or Email"
             autoCapitalize="none"
+            autoComplete="off"
+            autoCorrect={false}
+            textContentType="none"
             keyboardType={String(emailOrPhone).includes("@") ? "email-address" : "phone-pad"}
             style={styles.input}
           />
@@ -118,6 +122,9 @@ export default function LoginScreen() {
             onChangeText={setPassword}
             placeholder="Password"
             secureTextEntry
+            autoComplete="off"
+            autoCorrect={false}
+            textContentType="none"
             style={styles.input}
           />
 
@@ -135,7 +142,7 @@ export default function LoginScreen() {
             <Text style={styles.btnText}>{loading ? "Please wait..." : mode === "login" ? "Login" : "Create Account"}</Text>
           </Pressable>
 
-          <Text style={styles.hint}>{hint}</Text>
+          <Text style={styles.hint}>Don't know your Church Code? Check your church's website or bulletin, or ask your church admin!</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -156,7 +163,7 @@ const styles = StyleSheet.create({
   header: { alignItems: "center", marginBottom: 14 },
   logo: { width: 86, height: 86, borderRadius: 18, marginBottom: 10 },
   appName: { fontSize: 22, fontWeight: "800", color: "#0B1220" },
-  sub: { marginTop: 6, color: "#5B667A", fontWeight: "600" },
+  sub: { marginTop: 6, color: "#5B667A", fontWeight: "600", textAlign: "center" },
 
   segment: {
     flexDirection: "row",
@@ -190,6 +197,6 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   btnText: { color: "white", fontWeight: "900", fontSize: 16 },
-  hint: { marginTop: 10, color: "#5B667A", fontWeight: "600", fontSize: 12, textAlign: "center" },
+  hint: { marginTop: 14, color: "#5B667A", fontWeight: "600", fontSize: 12, textAlign: "center", lineHeight: 18 },
   error: { marginTop: 10, color: "#B42318", fontWeight: "800", textAlign: "center" },
 });
