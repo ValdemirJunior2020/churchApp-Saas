@@ -1,104 +1,167 @@
 // src/context/AuthContext.js
-import React, { createContext, useContext, useMemo, useState } from "react";
-import { DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD, DEMO_ADMIN_PHONE, DEMO_INVITE_CODE } from "../config";
-import { useAppData } from "./AppDataContext";
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Linking } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const AuthContext = createContext(null);
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxUQo4wZqra7KnMinDMqwABjvJXUVXstvup3xLu9ENPg0HCxEU98xhaYm6-naUL-T8B/exec";
 
-function normPhone(v) {
-  return String(v || "").replace(/\D/g, "");
-}
+const AuthContext = createContext({});
 
 export function AuthProvider({ children }) {
-  const { tenantCode, setTenantCode, members, addMember } = useAppData();
-  const [user, setUser] = useState(null);
+  const [tenant, setTenant] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  async function login({ churchCode, emailOrPhone, password }) {
-    const code = String(churchCode || "").trim().toUpperCase();
-    const eop = String(emailOrPhone || "").trim().toLowerCase();
-    const pass = String(password || "");
+  // Load active session when the app starts
+  useEffect(() => {
+    loadSession();
+  }, []);
 
-    if (!code) throw new Error("Enter your Church Code.");
-    if (!eop) throw new Error("Enter Email or Phone.");
-    if (!pass) throw new Error("Enter Password.");
+  async function loadSession() {
+    try {
+      const stored = await AsyncStorage.getItem('@congregate_tenant');
+      if (stored) {
+        setTenant(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error("Failed to load session", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
-    // set tenant selection (local)
-    if (code !== tenantCode) await setTenantCode(code);
+  async function saveSession(data) {
+    setTenant(data);
+    await AsyncStorage.setItem('@congregate_tenant', JSON.stringify(data));
+  }
 
-    // ✅ Demo Admin (matches your template hint)
-    const isDemoTenant = code === DEMO_INVITE_CODE;
-    const isAdminIdentity = eop === DEMO_ADMIN_EMAIL.toLowerCase() || normPhone(eop) === normPhone(DEMO_ADMIN_PHONE);
-    if (isDemoTenant && isAdminIdentity && pass === DEMO_ADMIN_PASSWORD) {
-      const admin = {
-        id: "admin-demo-1",
-        tenantCode: code,
-        name: "Pastor Admin",
-        email: DEMO_ADMIN_EMAIL,
-        phone: DEMO_ADMIN_PHONE,
-        role: "ADMIN",
-      };
-      setUser(admin);
-      return admin;
+  async function logout() {
+    setTenant(null);
+    await AsyncStorage.removeItem('@congregate_tenant');
+  }
+
+  // ==========================================
+  // 1. PASTOR CREATES A NEW CHURCH
+  // ==========================================
+  async function createChurchAndLogin({ churchName, pastorName, phone, email, password }) {
+    // Calls the Code.gs billingStart_ endpoint which automatically generates a unique churchCode
+    const response = await fetch(SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resource: "billing",
+        action: "start",
+        churchName: churchName,
+        adminName: pastorName,
+        adminEmail: email,
+        adminPhone: phone,
+        adminPassword: password, // Handled securely by your Code.gs hash function
+        plan: "PRO"
+      }),
+    });
+
+    const data = await response.json();
+    
+    if (!data.ok) {
+      throw new Error(data.error || "Failed to create church. Please try again.");
     }
 
-    // members are tenant scoped
-    const found = members.find((m) => {
-      if ((m.tenantCode || "").toUpperCase() !== code) return false;
-      const emailMatch = (m.email || "").toLowerCase() === eop;
-      const phoneMatch = normPhone(m.phone) === normPhone(eop);
-      return (emailMatch || phoneMatch) && m.password === pass;
+    // Save to device storage. The app will detect planStatus: "PENDING"
+    // and route the Pastor to PaymentRequiredScreen
+    await saveSession({
+      inviteCode: data.churchCode, // The newly generated code!
+      churchName: churchName,
+      planStatus: "PENDING", 
+      sessionId: data.sessionId,
+      checkoutUrl: data.checkoutUrl,
+      role: "ADMIN",
+      email: email,
+      name: pastorName
     });
 
-    if (!found) throw new Error("Invalid credentials.");
-    setUser(found);
-    return found;
+    // Automatically open the checkout URL so they can set up their PayPal subscription
+    if (data.checkoutUrl) {
+      Linking.openURL(data.checkoutUrl).catch(err => console.error("Couldn't open payment page", err));
+    }
   }
 
-  async function signup({ churchCode, name, email, phone, password }) {
-    const code = String(churchCode || "").trim().toUpperCase();
-    const cleanEmail = String(email || "").trim().toLowerCase();
-    const cleanPhone = String(phone || "").trim();
-    const pass = String(password || "");
-
-    if (!code) throw new Error("Church Code required.");
-    if (!name) throw new Error("Name required.");
-    if (!pass) throw new Error("Password required.");
-    if (!cleanEmail && !cleanPhone) throw new Error("Email or Phone required.");
-
-    if (code !== tenantCode) await setTenantCode(code);
-
-    const exists = members.some((m) => {
-      if ((m.tenantCode || "").toUpperCase() !== code) return false;
-      return (cleanEmail && (m.email || "").toLowerCase() === cleanEmail) || (cleanPhone && normPhone(m.phone) === normPhone(cleanPhone));
+  // ==========================================
+  // 2. MEMBER JOINS AN EXISTING CHURCH
+  // ==========================================
+  async function joinChurchAndLogin({ inviteCode, name, phone, email, password }) {
+    const response = await fetch(SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resource: "auth", // Adjust this if your actual Google Script auth endpoint differs
+        action: "signup",
+        churchCode: inviteCode,
+        name: name,
+        email: email,
+        phone: phone,
+        password: password
+      }),
     });
-    if (exists) throw new Error("User already exists.");
 
-    const newUser = {
-      id: Math.random().toString(16).slice(2) + Date.now().toString(16),
-      tenantCode: code,
-      name,
-      email: cleanEmail,
-      phone: cleanPhone,
-      password: pass,
+    const data = await response.json();
+    
+    if (!data.ok) {
+      throw new Error(data.error || "Invalid Church Code or account already exists.");
+    }
+
+    await saveSession({
+      inviteCode: data.churchCode || inviteCode,
+      planStatus: data.planStatus || "ACTIVE", // Members inherit church's active status
       role: "MEMBER",
-      createdAt: new Date().toISOString(),
-    };
-
-    await addMember(newUser);
-    setUser(newUser);
-    return newUser;
+      email: email,
+      name: name
+    });
   }
 
-  function logout() {
-    setUser(null);
+  // ==========================================
+  // 3. RETURNING USER LOGS IN
+  // ==========================================
+  async function login({ churchCode, emailOrPhone, password }) {
+    const response = await fetch(SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resource: "auth", // Adjust this if your actual Google Script auth endpoint differs
+        action: "login",
+        churchCode: churchCode,
+        emailOrPhone: emailOrPhone,
+        password: password
+      }),
+    });
+
+    const data = await response.json();
+    
+    if (!data.ok) {
+      throw new Error(data.error || "Invalid login credentials. Check your Church Code and Password.");
+    }
+
+    await saveSession({
+      inviteCode: data.churchCode || churchCode,
+      planStatus: data.planStatus || "ACTIVE",
+      role: data.role || "MEMBER",
+      email: data.email || emailOrPhone,
+      churchName: data.churchName
+    });
   }
 
-  const value = useMemo(() => ({ user, login, signup, logout }), [user]);
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{
+      tenant,
+      isLoading,
+      login,
+      logout,
+      createChurchAndLogin,
+      joinChurchAndLogin
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
-  return ctx;
+  return useContext(AuthContext);
 }
