@@ -1,6 +1,15 @@
-// src/screens/member/HomeScreen.js  (REPLACE)
+// File: src/screens/member/HomeScreen.js (REPLACE)
+
 import React, { useMemo } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  Alert,
+} from "react-native";
 import { WebView } from "react-native-webview";
 import { useAppData } from "../../context/AppDataContext";
 
@@ -22,6 +31,28 @@ export default function HomeScreen({ navigation }) {
     return `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1&playsinline=1`;
   }, [youtubeId]);
 
+  const goToGiving = () => {
+    // Your tab name in AppNavigator is "Giving" (not "Give")
+    if (navigation?.navigate) {
+      try {
+        navigation.navigate("Giving");
+      } catch (e) {
+        Alert.alert("Navigation", "Could not open Giving screen yet.");
+      }
+    }
+  };
+
+  const goToEvents = () => {
+    // If Events screen is not added yet, show friendly message
+    if (!navigation?.navigate) return;
+
+    try {
+      navigation.navigate("Events");
+    } catch (e) {
+      Alert.alert("Coming Soon", "Events screen is not connected yet.");
+    }
+  };
+
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.container}>
       <View style={styles.heroCard}>
@@ -30,9 +61,12 @@ export default function HomeScreen({ navigation }) {
             <Image source={{ uri: logoUrl }} style={styles.logo} />
           ) : (
             <View style={styles.logoFallback}>
-              <Text style={styles.logoFallbackText}>{churchName.slice(0, 1).toUpperCase()}</Text>
+              <Text style={styles.logoFallbackText}>
+                {churchName.slice(0, 1).toUpperCase()}
+              </Text>
             </View>
           )}
+
           <View style={{ flex: 1 }}>
             <Text style={styles.kicker}>SANCTUARY</Text>
             <Text style={styles.title}>{churchName}</Text>
@@ -46,11 +80,12 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         <View style={styles.quickRow}>
-          <Pressable style={styles.quickBtn} onPress={() => navigation.navigate("Give")}>
+          <Pressable style={styles.quickBtn} onPress={goToGiving}>
             <Text style={styles.quickText}>Give</Text>
           </Pressable>
-          <Pressable style={styles.quickBtn} onPress={() => navigation.navigate("Events")}>
-            <Text style={styles.quickText}>Events</Text>
+
+          <Pressable style={styles.quickBtnSecondary} onPress={goToEvents}>
+            <Text style={styles.quickTextSecondary}>Events</Text>
           </Pressable>
         </View>
       </View>
@@ -71,7 +106,9 @@ export default function HomeScreen({ navigation }) {
       ) : (
         <View style={styles.videoCard}>
           <Text style={styles.videoTitle}>Watch</Text>
-          <Text style={styles.videoSub}>Pastor can add a YouTube Video ID in Admin Settings.</Text>
+          <Text style={styles.videoSub}>
+            Pastor can add a YouTube Video ID in Admin Settings.
+          </Text>
         </View>
       )}
     </ScrollView>
@@ -83,14 +120,27 @@ const styles = StyleSheet.create({
   container: { padding: 16, paddingBottom: 28 },
 
   heroCard: {
-    backgroundColor: "rgba(255,255,255,0.85)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.12)",
+    borderColor: "rgba(15,23,42,0.10)",
     borderRadius: 26,
     padding: 16,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
   },
+
   topRow: { flexDirection: "row", gap: 12, alignItems: "center" },
-  logo: { width: 56, height: 56, borderRadius: 18, backgroundColor: "rgba(15,23,42,0.06)" },
+
+  logo: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: "rgba(15,23,42,0.06)",
+  },
+
   logoFallback: {
     width: 56,
     height: 56,
@@ -99,24 +149,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   logoFallbackText: { color: "#0f172a", fontWeight: "900", fontSize: 22 },
 
-  kicker: { fontSize: 11, letterSpacing: 2.5, color: "#64748b", fontWeight: "900" },
+  kicker: {
+    fontSize: 11,
+    letterSpacing: 2.5,
+    color: "#64748b",
+    fontWeight: "900",
+  },
+
   title: { marginTop: 4, fontSize: 22, fontWeight: "900", color: "#0f172a" },
 
   verseCard: {
     marginTop: 14,
     borderRadius: 22,
     padding: 14,
-    backgroundColor: "rgba(15,23,42,0.06)",
+    backgroundColor: "rgba(15,23,42,0.04)",
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
+    borderColor: "rgba(15,23,42,0.08)",
   },
+
   verseTitle: { color: "#64748b", fontWeight: "900", letterSpacing: 1 },
-  verseText: { marginTop: 10, fontSize: 16, fontWeight: "800", color: "#0f172a", lineHeight: 22 },
+  verseText: {
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0f172a",
+    lineHeight: 22,
+  },
   verseRef: { marginTop: 10, color: "#64748b", fontWeight: "900" },
 
   quickRow: { flexDirection: "row", gap: 10, marginTop: 14 },
+
   quickBtn: {
     flex: 1,
     height: 48,
@@ -125,25 +190,45 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
+  quickBtnSecondary: {
+    flex: 1,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   quickText: { color: "white", fontWeight: "900" },
+  quickTextSecondary: { color: "#0f172a", fontWeight: "900" },
 
   videoCard: {
     marginTop: 14,
-    backgroundColor: "rgba(255,255,255,0.85)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.12)",
+    borderColor: "rgba(15,23,42,0.10)",
     borderRadius: 26,
     padding: 16,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
+
   videoTitle: { fontSize: 18, fontWeight: "900", color: "#0f172a" },
   videoSub: { marginTop: 8, color: "#64748b", fontWeight: "800" },
+
   videoWrap: {
     marginTop: 12,
     height: 220,
     borderRadius: 22,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.12)",
-    backgroundColor: "rgba(15,23,42,0.06)",
+    borderColor: "rgba(15,23,42,0.10)",
+    backgroundColor: "rgba(15,23,42,0.04)",
   },
 });

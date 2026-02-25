@@ -1,6 +1,7 @@
-// src/screens/auth/WelcomeScreen.js  (CREATE)
+// File: src/screens/auth/WelcomeScreen.js (REPLACE)
+
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function WelcomeScreen({ navigation }) {
   return (
@@ -16,7 +17,17 @@ export default function WelcomeScreen({ navigation }) {
           <Text style={styles.primaryText}>Create Church (Pastor)</Text>
         </Pressable>
 
-        <Pressable style={styles.secondary} onPress={() => navigation.navigate("JoinChurch")}>
+        {/* ✅ FIX: JoinChurch screen is not in your navigator, so do NOT navigate to it */}
+        <Pressable
+          style={styles.secondary}
+          onPress={() => {
+            Alert.alert(
+              "Join Church",
+              "Join Church screen is coming next. For now, please use Login if you already have a Church Code."
+            );
+            navigation.navigate("Login");
+          }}
+        >
           <Text style={styles.secondaryText}>Join Church (Member)</Text>
         </Pressable>
 
