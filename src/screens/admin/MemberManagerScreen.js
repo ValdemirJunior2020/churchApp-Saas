@@ -1,191 +1,625 @@
-// src/screens/admin/MemberManagerScreen.js  (REPLACE)
+// File: src/screens/admin/MemberManagerScreen.js
+
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Alert,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useAppData } from "../../context/AppDataContext";
 
 export default function MemberManagerScreen() {
-  const { members, refreshMembers, updateMember, deleteMember } = useAppData();
+  const appData = typeof useAppData === "function" ? useAppData() : {};
 
-  const [selected, setSelected] = useState(null);
-  const [editName, setEditName] = useState("");
-  const [editPhone, setEditPhone] = useState("");
-  const [editRole, setEditRole] = useState("MEMBER");
+  const members = Array.isArray(appData?.members) ? appData.members : [];
+  const tenant = appData?.tenant || null;
+
+  // ✅ Safe wrappers (prevents crash if AppDataContext is not finished yet)
+  const refreshMembers =
+    typeof appData?.refreshMembers === "function"
+      ? appData.refreshMembers
+      : async () => {
+          console.log("[MemberManagerScreen] refreshMembers missing (safe fallback)");
+          return [];
+        };
+
+  const updateMember =
+    typeof appData?.updateMember === "function"
+      ? appData.updateMember
+      : async () => {
+          throw new Error("updateMember is not available in AppDataContext yet.");
+        };
+
+  const deleteMember =
+    typeof appData?.deleteMember === "function"
+      ? appData.deleteMember
+      : async () => {
+          throw new Error("deleteMember is not available in AppDataContext yet.");
+        };
+
+  const [loading, setLoading] = useState(false);
+  const [bootLoaded, setBootLoaded] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const [editing, setEditing] = useState(null); // { id, name, email, phone, role, status }
 
   useEffect(() => {
-    refreshMembers().catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let active = true;
 
-  const list = useMemo(() => {
-    const arr = Array.isArray(members) ? members : [];
-    return arr
-      .filter((u) => String(u.isActive).toUpperCase() !== "FALSE")
-      .sort((a, b) => String(a.role || "").localeCompare(String(b.role || "")));
-  }, [members]);
+    (async () => {
+      try {
+        setLoading(true);
+        console.log("[MemberManagerScreen] opening...");
+        await refreshMembers();
+      } catch (err) {
+        console.log("[MemberManagerScreen] refresh error:", err?.message || err);
+      } finally {
+        if (active) {
+          setLoading(false);
+          setBootLoaded(true);
+        }
+      }
+    })();
 
-  function pick(u) {
-    setSelected(u);
-    setEditName(String(u.name || ""));
-    setEditPhone(String(u.phone || ""));
-    setEditRole(String(u.role || "MEMBER").toUpperCase());
+    return () => {
+      active = false;
+    };
+  }, [refreshMembers]);
+
+  const filteredMembers = useMemo(() => {
+    const q = String(search || "").trim().toLowerCase();
+    if (!q) return members;
+
+    return members.filter((m) => {
+      const name = String(m?.name || "").toLowerCase();
+      const email = String(m?.email || "").toLowerCase();
+      const phone = String(m?.phone || "").toLowerCase();
+      const role = String(m?.role || "").toLowerCase();
+      const status = String(m?.status || "").toLowerCase();
+      return (
+        name.includes(q) ||
+        email.includes(q) ||
+        phone.includes(q) ||
+        role.includes(q) ||
+        status.includes(q)
+      );
+    });
+  }, [members, search]);
+
+  function startEdit(member) {
+    setSelectedId(member?.id || null);
+    setEditing({
+      id: member?.id || "",
+      name: String(member?.name || ""),
+      email: String(member?.email || ""),
+      phone: String(member?.phone || ""),
+      role: String(member?.role || "MEMBER").toUpperCase(),
+      status: String(member?.status || "ACTIVE").toUpperCase(),
+    });
   }
 
-  async function onSave() {
+  function cancelEdit() {
+    setEditing(null);
+    setSelectedId(null);
+  }
+
+  async function saveEdit() {
+    if (!editing) return;
+
     try {
-      if (!selected) return;
+      setLoading(true);
+      console.log("[MemberManagerScreen] save clicked:", editing);
+
       await updateMember({
-        userId: selected.userId,
-        name: editName,
-        phone: editPhone,
-        role: editRole,
+        id: editing.id,
+        churchCode: tenant?.churchCode || undefined,
+        name: editing.name,
+        email: editing.email,
+        phone: editing.phone,
+        role: editing.role,
+        status: editing.status,
       });
-      Alert.alert("Saved", "Member updated.");
-      setSelected(null);
-    } catch (e) {
-      Alert.alert("Error", String(e?.message || e));
+
+      console.log("[MemberManagerScreen] save success");
+      Alert.alert("Success", "Member updated.");
+      setEditing(null);
+      setSelectedId(null);
+      await refreshMembers();
+    } catch (err) {
+      console.log("[MemberManagerScreen] save error:", err?.message || err);
+      Alert.alert("Update failed", err?.message || "Could not update member.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function onDelete(u) {
+  function confirmDelete(member) {
+    Alert.alert(
+      "Delete member",
+      `Delete ${member?.name || "this member"}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              console.log("[MemberManagerScreen] delete clicked:", member?.id);
+
+              await deleteMember({
+                id: member?.id,
+                churchCode: tenant?.churchCode || undefined,
+              });
+
+              Alert.alert("Deleted", "Member removed.");
+              if (selectedId === member?.id) cancelEdit();
+              await refreshMembers();
+            } catch (err) {
+              console.log("[MemberManagerScreen] delete error:", err?.message || err);
+              Alert.alert("Delete failed", err?.message || "Could not delete member.");
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  async function handleRefresh() {
     try {
-      await deleteMember(u.userId);
-    } catch (e) {
-      Alert.alert("Error", String(e?.message || e));
+      setLoading(true);
+      console.log("[MemberManagerScreen] manual refresh clicked");
+      await refreshMembers();
+    } catch (err) {
+      console.log("[MemberManagerScreen] manual refresh error:", err?.message || err);
+      Alert.alert("Refresh failed", err?.message || "Could not refresh members.");
+    } finally {
+      setLoading(false);
+      setBootLoaded(true);
     }
   }
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.kicker}>ADMIN</Text>
+    <View style={styles.screen}>
+      <View style={styles.headerCard}>
+        <Text style={styles.kicker}>PASTOR SETTINGS</Text>
         <Text style={styles.title}>Members</Text>
-        <Text style={styles.sub}>Manage members inside this church only.</Text>
+        <Text style={styles.sub}>
+          Manage your church members, roles, and status.
+        </Text>
 
-        {selected ? (
-          <View style={styles.editBox}>
-            <Text style={styles.editTitle}>Edit Member</Text>
-            <TextInput value={editName} onChangeText={setEditName} style={styles.input} placeholder="Name" />
-            <TextInput value={editPhone} onChangeText={setEditPhone} style={styles.input} placeholder="Phone" />
-            <TextInput value={editRole} onChangeText={setEditRole} style={styles.input} placeholder="Role (ADMIN/MEMBER)" autoCapitalize="characters" />
+        <View style={styles.topRow}>
+          <View style={styles.badge}>
+            <Text style={styles.badgeLabel}>Church Code</Text>
+            <Text style={styles.badgeValue}>
+              {tenant?.churchCode || "—"}
+            </Text>
+          </View>
 
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-              <Pressable style={[styles.softBtn, { flex: 1 }]} onPress={() => setSelected(null)}>
-                <Text style={styles.softText}>Cancel</Text>
-              </Pressable>
-              <Pressable style={[styles.primary, { flex: 1 }]} onPress={onSave}>
-                <Text style={styles.primaryText}>Save</Text>
-              </Pressable>
+          <Pressable
+            onPress={handleRefresh}
+            style={({ pressed }) => [styles.refreshBtn, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.refreshBtnText}>Refresh</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search by name, email, phone, role..."
+          autoCapitalize="none"
+          style={styles.searchInput}
+        />
+
+        {loading && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator />
+            <Text style={styles.loadingText}>Loading...</Text>
+          </View>
+        )}
+
+        {!loading && bootLoaded && filteredMembers.length === 0 && (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>No members found</Text>
+            <Text style={styles.emptySub}>
+              {members.length === 0
+                ? "Your member list is empty or AppDataContext has not loaded members yet."
+                : "Try a different search."}
+            </Text>
+          </View>
+        )}
+
+        <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ paddingBottom: 8 }}>
+          {filteredMembers.map((member) => {
+            const isSelected = selectedId === member?.id;
+            return (
+              <View key={String(member?.id || Math.random())} style={[styles.memberRow, isSelected && styles.memberRowSelected]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.memberName}>{member?.name || "(No name)"}</Text>
+                  <Text style={styles.memberMeta}>
+                    {member?.email || "No email"} {member?.phone ? `• ${member.phone}` : ""}
+                  </Text>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.pill}>{String(member?.role || "MEMBER").toUpperCase()}</Text>
+                    <Text
+                      style={[
+                        styles.pill,
+                        String(member?.status || "ACTIVE").toUpperCase() === "ACTIVE"
+                          ? styles.pillActive
+                          : styles.pillInactive,
+                      ]}
+                    >
+                      {String(member?.status || "ACTIVE").toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.actionsCol}>
+                  <Pressable
+                    onPress={() => startEdit(member)}
+                    style={({ pressed }) => [styles.smallBtn, pressed && styles.btnPressed]}
+                  >
+                    <Text style={styles.smallBtnText}>Edit</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => confirmDelete(member)}
+                    style={({ pressed }) => [styles.smallBtnDanger, pressed && styles.btnPressed]}
+                  >
+                    <Text style={styles.smallBtnDangerText}>Delete</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {editing && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Edit Member</Text>
+
+          <Text style={styles.label}>Name</Text>
+          <TextInput
+            value={editing.name}
+            onChangeText={(v) => setEditing((prev) => ({ ...prev, name: v }))}
+            style={styles.input}
+            placeholder="Member name"
+          />
+
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            value={editing.email}
+            onChangeText={(v) => setEditing((prev) => ({ ...prev, email: v }))}
+            style={styles.input}
+            placeholder="email@example.com"
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+
+          <Text style={styles.label}>Phone</Text>
+          <TextInput
+            value={editing.phone}
+            onChangeText={(v) => setEditing((prev) => ({ ...prev, phone: v }))}
+            style={styles.input}
+            placeholder="Phone number"
+            keyboardType="phone-pad"
+          />
+
+          <View style={styles.doubleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Role</Text>
+              <TextInput
+                value={editing.role}
+                onChangeText={(v) =>
+                  setEditing((prev) => ({ ...prev, role: String(v || "").toUpperCase() }))
+                }
+                style={styles.input}
+                placeholder="ADMIN or MEMBER"
+                autoCapitalize="characters"
+              />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Status</Text>
+              <TextInput
+                value={editing.status}
+                onChangeText={(v) =>
+                  setEditing((prev) => ({ ...prev, status: String(v || "").toUpperCase() }))
+                }
+                style={styles.input}
+                placeholder="ACTIVE / INACTIVE"
+                autoCapitalize="characters"
+              />
             </View>
           </View>
-        ) : null}
 
-        <View style={{ marginTop: 12, gap: 10 }}>
-          {list.length === 0 ? (
-            <Text style={styles.empty}>No members yet.</Text>
-          ) : (
-            list.map((u) => (
-              <View key={u.userId} style={styles.row}>
-                <Pressable style={{ flex: 1 }} onPress={() => pick(u)}>
-                  <Text style={styles.name}>{u.name}</Text>
-                  <Text style={styles.meta}>
-                    {u.role} • {u.phone} {u.email ? `• ${u.email}` : ""}
-                  </Text>
-                </Pressable>
-                <Pressable style={styles.delBtn} onPress={() => onDelete(u)}>
-                  <Text style={styles.delText}>Delete</Text>
-                </Pressable>
-              </View>
-            ))
-          )}
+          <View style={styles.footerActions}>
+            <Pressable
+              onPress={cancelEdit}
+              style={({ pressed }) => [styles.secondaryBtn, pressed && styles.btnPressed]}
+            >
+              <Text style={styles.secondaryBtnText}>Cancel</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={saveEdit}
+              disabled={loading}
+              style={({ pressed }) => [styles.primaryBtn, pressed && styles.btnPressed, loading && { opacity: 0.7 }]}
+            >
+              <Text style={styles.primaryBtnText}>{loading ? "Saving..." : "Save Member"}</Text>
+            </Pressable>
+          </View>
         </View>
-
-        <Pressable style={styles.softBtn} onPress={() => refreshMembers()}>
-          <Text style={styles.softText}>Refresh</Text>
-        </Pressable>
-      </View>
-    </ScrollView>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f4f6fb" },
-  container: { padding: 16, paddingBottom: 28 },
-  card: {
-    backgroundColor: "rgba(255,255,255,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.12)",
-    borderRadius: 26,
-    padding: 16,
+  screen: {
+    flex: 1,
+    backgroundColor: "#F5F7FB",
+    padding: 14,
+    gap: 12,
   },
-  kicker: { fontSize: 11, letterSpacing: 2.5, color: "#64748b", fontWeight: "900" },
-  title: { marginTop: 6, fontSize: 22, fontWeight: "900", color: "#0f172a" },
-  sub: { marginTop: 6, fontSize: 13, color: "#586174", fontWeight: "700" },
-
-  editBox: {
-    marginTop: 12,
-    borderRadius: 20,
-    padding: 12,
-    backgroundColor: "rgba(15,23,42,0.06)",
+  headerCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
+    borderColor: "#E5E7EB",
+    padding: 14,
   },
-  editTitle: { fontWeight: "900", color: "#0f172a" },
-  input: {
-    marginTop: 8,
-    height: 46,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
-    color: "#0f172a",
+  kicker: {
+    fontSize: 11,
     fontWeight: "800",
+    letterSpacing: 2,
+    color: "#64748B",
   },
-
-  row: {
+  title: {
+    marginTop: 4,
+    fontSize: 26,
+    fontWeight: "900",
+    color: "#0B1220",
+  },
+  sub: {
+    marginTop: 4,
+    color: "#5B667A",
+    fontWeight: "600",
+  },
+  topRow: {
+    marginTop: 12,
     flexDirection: "row",
     gap: 10,
-    padding: 12,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
     alignItems: "center",
+    justifyContent: "space-between",
   },
-  name: { fontWeight: "900", color: "#0f172a" },
-  meta: { marginTop: 2, color: "#64748b", fontWeight: "800", fontSize: 12 },
-
-  delBtn: {
-    height: 36,
-    paddingHorizontal: 12,
+  badge: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     borderRadius: 14,
-    backgroundColor: "rgba(239,68,68,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.22)",
+    backgroundColor: "#F8FAFC",
+    padding: 10,
+  },
+  badgeLabel: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  badgeValue: {
+    marginTop: 3,
+    color: "#0B1220",
+    fontWeight: "900",
+  },
+  refreshBtn: {
+    height: 44,
+    minWidth: 100,
+    borderRadius: 14,
+    backgroundColor: "#0B1220",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 14,
   },
-  delText: { color: "#b91c1c", fontWeight: "900" },
-
-  empty: { marginTop: 10, color: "#64748b", fontWeight: "800" },
-
-  softBtn: {
+  refreshBtnText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    padding: 14,
+  },
+  searchInput: {
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 14,
+    fontWeight: "700",
+  },
+  loadingRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  loadingText: {
+    color: "#475569",
+    fontWeight: "700",
+  },
+  emptyBox: {
+    marginTop: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F8FAFC",
+    padding: 12,
+  },
+  emptyTitle: {
+    fontWeight: "800",
+    color: "#0B1220",
+  },
+  emptySub: {
+    marginTop: 4,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+  memberRow: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    padding: 12,
+    flexDirection: "row",
+    gap: 10,
+  },
+  memberRowSelected: {
+    borderColor: "#2563EB",
+    backgroundColor: "#F8FBFF",
+  },
+  memberName: {
+    fontWeight: "900",
+    color: "#0B1220",
+    fontSize: 15,
+  },
+  memberMeta: {
+    marginTop: 3,
+    color: "#5B667A",
+    fontWeight: "600",
+    fontSize: 12,
+  },
+  metaRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  pill: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#334155",
+    backgroundColor: "#F8FAFC",
+    overflow: "hidden",
+  },
+  pillActive: {
+    borderColor: "#BBF7D0",
+    backgroundColor: "#F0FDF4",
+    color: "#166534",
+  },
+  pillInactive: {
+    borderColor: "#FECACA",
+    backgroundColor: "#FEF2F2",
+    color: "#991B1B",
+  },
+  actionsCol: {
+    justifyContent: "center",
+    gap: 8,
+  },
+  smallBtn: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#F8FAFC",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  smallBtnText: {
+    fontWeight: "800",
+    color: "#0B1220",
+  },
+  smallBtnDanger: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    backgroundColor: "#FEF2F2",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  smallBtnDangerText: {
+    fontWeight: "800",
+    color: "#991B1B",
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#0B1220",
+    marginBottom: 8,
+  },
+  label: {
+    marginTop: 8,
+    marginBottom: 6,
+    fontWeight: "800",
+    color: "#0B1220",
+  },
+  input: {
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 12,
+    fontWeight: "700",
+  },
+  doubleRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 2,
+  },
+  footerActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
     marginTop: 14,
-    height: 48,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(15,23,42,0.08)",
+  },
+  secondaryBtn: {
+    height: 46,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.12)",
-  },
-  softText: { color: "#0f172a", fontWeight: "900" },
-  primary: {
-    height: 48,
-    borderRadius: 18,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0f172a",
+    paddingHorizontal: 14,
   },
-  primaryText: { color: "white", fontWeight: "900" },
+  secondaryBtnText: {
+    color: "#0B1220",
+    fontWeight: "800",
+  },
+  primaryBtn: {
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: "#0B1220",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  primaryBtnText: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+  },
+  btnPressed: {
+    opacity: 0.85,
+  },
 });

@@ -1,9 +1,14 @@
-// src/api/gasClient.js
+// File: src/api/gasClient.js
+
 import { GAS_URL, GAS_API_KEY } from "../config";
 
 function withQuery(base, params) {
-  const entries = Object.entries(params || {}).filter(([_, v]) => v !== undefined && v !== null && String(v).trim() !== "");
-  const q = entries.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join("&");
+  const entries = Object.entries(params || {}).filter(
+    ([_, v]) => v !== undefined && v !== null && String(v).trim() !== ""
+  );
+  const q = entries
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join("&");
   if (!q) return base;
   return base + (base.includes("?") ? "&" : "?") + q;
 }
@@ -26,21 +31,30 @@ async function fetchJson(url, options = {}, timeoutMs = 20000) {
     if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
     if (data && data.ok === false) throw new Error(data.error || "Request failed");
 
-    return data?.data ?? data;
+    return data;
   } finally {
     clearTimeout(t);
   }
 }
 
-export async function gasGet(resource) {
-  const url = withQuery(GAS_URL, { key: GAS_API_KEY, resource });
+export async function gasGet(resource, params = {}) {
+  const url = withQuery(GAS_URL, {
+    ...(GAS_API_KEY ? { key: GAS_API_KEY } : {}),
+    resource,
+    ...params,
+  });
   return fetchJson(url, { method: "GET" });
 }
 
 export async function gasPost(resource, body = {}, params = {}) {
-  const url = withQuery(GAS_URL, { key: GAS_API_KEY, resource, ...params });
+  const url = withQuery(GAS_URL, {
+    ...(GAS_API_KEY ? { key: GAS_API_KEY } : {}),
+    resource,
+    ...params,
+  });
 
-  // NOTE: text/plain avoids extra complications in some environments
+  // IMPORTANT:
+  // text/plain avoids browser/Expo preflight OPTIONS (405 on Google Apps Script)
   return fetchJson(url, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },

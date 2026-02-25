@@ -1,17 +1,30 @@
-// src/screens/auth/PaymentRequiredScreen.js  (CREATE)
 import React from "react";
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
-import { PAYMENT_URL } from "../../config";
 import { useAuth } from "../../context/AuthContext";
 
+// ✅ This screen should open the exact checkout URL returned by billing/start
+// (with sessionId already included), not a hardcoded PAYMENT_URL only.
 export default function PaymentRequiredScreen() {
   const { tenant, logout } = useAuth();
 
   async function openPay() {
     try {
-      await Linking.openURL(PAYMENT_URL);
-    } catch {
-      Alert.alert("Error", "Could not open payment page.");
+      const url =
+        tenant?.checkoutUrl || // best option: returned by billing/start and saved in session
+        tenant?.paymentUrl ||  // fallback if you use another key name
+        "";
+
+      if (!url) {
+        Alert.alert(
+          "Payment link not ready",
+          "No checkout link was found in your session. Please create the church again so the app can receive the checkout URL."
+        );
+        return;
+      }
+
+      await Linking.openURL(url);
+    } catch (e) {
+      Alert.alert("Error", e?.message || "Could not open payment page.");
     }
   }
 
@@ -19,12 +32,11 @@ export default function PaymentRequiredScreen() {
     <View style={styles.root}>
       <View style={styles.card}>
         <Text style={styles.title}>Subscription Needed</Text>
-        <Text style={styles.sub}>
-          Your church access is locked right now.
-        </Text>
+        <Text style={styles.sub}>Your church access is locked right now.</Text>
 
         <View style={styles.box}>
           <Text style={styles.meta}>Church: {tenant?.churchName || "-"}</Text>
+          <Text style={styles.meta}>Code: {tenant?.churchCode || "-"}</Text>
           <Text style={styles.meta}>Status: {tenant?.planStatus || "-"}</Text>
           <Text style={styles.meta}>Trial Ends: {tenant?.trialEndsAt || "-"}</Text>
         </View>
@@ -38,7 +50,7 @@ export default function PaymentRequiredScreen() {
         </Pressable>
 
         <Text style={styles.note}>
-          After payment, open the app and login again. We’ll unlock you when TENANTS.planStatus becomes ACTIVE.
+          After payment, open the app and login again.
         </Text>
       </View>
     </View>

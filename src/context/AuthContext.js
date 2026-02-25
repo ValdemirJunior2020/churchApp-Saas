@@ -1,9 +1,10 @@
-// src/context/AuthContext.js
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Linking } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// File: src/context/AuthContext.js
+// REPLACE ENTIRE FILE (keeps your flow, fixes GAS 405 + login response shape + auto-admin access)
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxUQo4wZqra7KnMinDMqwABjvJXUVXstvup3xLu9ENPg0HCxEU98xhaYm6-naUL-T8B/exec";
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { Linking } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { gasPost } from "../api/gasClient";
 
 const AuthContext = createContext({});
 
@@ -11,17 +12,14 @@ export function AuthProvider({ children }) {
   const [tenant, setTenant] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load active session when the app starts
   useEffect(() => {
     loadSession();
   }, []);
 
   async function loadSession() {
     try {
-      const stored = await AsyncStorage.getItem('@congregate_tenant');
-      if (stored) {
-        setTenant(JSON.parse(stored));
-      }
+      const stored = await AsyncStorage.getItem("@congregate_tenant");
+      if (stored) setTenant(JSON.parse(stored));
     } catch (e) {
       console.error("Failed to load session", e);
     } finally {
@@ -31,132 +29,115 @@ export function AuthProvider({ children }) {
 
   async function saveSession(data) {
     setTenant(data);
-    await AsyncStorage.setItem('@congregate_tenant', JSON.stringify(data));
+    await AsyncStorage.setItem("@congregate_tenant", JSON.stringify(data));
   }
 
   async function logout() {
     setTenant(null);
-    await AsyncStorage.removeItem('@congregate_tenant');
+    await AsyncStorage.removeItem("@congregate_tenant");
   }
 
-  // ==========================================
-  // 1. PASTOR CREATES A NEW CHURCH
-  // ==========================================
+  // Pastor creates church -> immediately enters admin area (ACTIVE for now)
   async function createChurchAndLogin({ churchName, pastorName, phone, email, password }) {
-    // Calls the Code.gs billingStart_ endpoint which automatically generates a unique churchCode
-    const response = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resource: "billing",
-        action: "start",
-        churchName: churchName,
-        adminName: pastorName,
-        adminEmail: email,
-        adminPhone: phone,
-        adminPassword: password, // Handled securely by your Code.gs hash function
-        plan: "PRO"
-      }),
+    const data = await gasPost("billing", {
+      action: "start",
+      churchName,
+      adminName: pastorName,
+      adminEmail: email,
+      adminPhone: phone,
+      adminPassword: password,
+      plan: "PRO",
     });
 
-    const data = await response.json();
-    
-    if (!data.ok) {
-      throw new Error(data.error || "Failed to create church. Please try again.");
-    }
-
-    // Save to device storage. The app will detect planStatus: "PENDING"
-    // and route the Pastor to PaymentRequiredScreen
-    await saveSession({
-      inviteCode: data.churchCode, // The newly generated code!
-      churchName: churchName,
-      planStatus: "PENDING", 
-      sessionId: data.sessionId,
-      checkoutUrl: data.checkoutUrl,
+    const session = {
+      inviteCode: data.churchCode,
+      churchCode: data.churchCode,
+      churchName,
+      planStatus: "ACTIVE", // <- onboarding access unlocked for now
+      sessionId: data.sessionId || null,
+      checkoutUrl: data.checkoutUrl || null,
       role: "ADMIN",
-      email: email,
-      name: pastorName
-    });
+      email,
+      phone,
+      name: pastorName,
+    };
 
-    // Automatically open the checkout URL so they can set up their PayPal subscription
+    await saveSession(session);
+
     if (data.checkoutUrl) {
-      Linking.openURL(data.checkoutUrl).catch(err => console.error("Couldn't open payment page", err));
+      Linking.openURL(data.checkoutUrl).catch((err) =>
+        console.error("Couldn't open payment page", err)
+      );
     }
+
+    return data;
   }
 
-  // ==========================================
-  // 2. MEMBER JOINS AN EXISTING CHURCH
-  // ==========================================
+  // NOTE: backend auth/signup endpoint not implemented in your Code.gs yet
   async function joinChurchAndLogin({ inviteCode, name, phone, email, password }) {
-    const response = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resource: "auth", // Adjust this if your actual Google Script auth endpoint differs
-        action: "signup",
-        churchCode: inviteCode,
-        name: name,
-        email: email,
-        phone: phone,
-        password: password
-      }),
+    const data = await gasPost("auth", {
+      action: "signup",
+      churchCode: inviteCode,
+      name,
+      email,
+      phone,
+      password,
     });
 
-    const data = await response.json();
-    
-    if (!data.ok) {
-      throw new Error(data.error || "Invalid Church Code or account already exists.");
-    }
-
+    const member = data.member || {};
     await saveSession({
-      inviteCode: data.churchCode || inviteCode,
-      planStatus: data.planStatus || "ACTIVE", // Members inherit church's active status
-      role: "MEMBER",
-      email: email,
-      name: name
+      inviteCode: member.churchCode || data.churchCode || inviteCode,
+      churchCode: member.churchCode || data.churchCode || inviteCode,
+      planStatus: data.planStatus || "ACTIVE",
+      role: member.role || data.role || "MEMBER",
+      email: member.email || email || "",
+      phone: member.phone || phone || "",
+      name: member.name || name || "",
+      churchName: data.churchName || member.churchName || null,
+      memberId: member.id || null,
     });
+
+    return data;
   }
 
-  // ==========================================
-  // 3. RETURNING USER LOGS IN
-  // ==========================================
   async function login({ churchCode, emailOrPhone, password }) {
-    const response = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resource: "auth", // Adjust this if your actual Google Script auth endpoint differs
-        action: "login",
-        churchCode: churchCode,
-        emailOrPhone: emailOrPhone,
-        password: password
-      }),
+    const data = await gasPost("auth", {
+      action: "login",
+      churchCode,
+      emailOrPhone,
+      password,
     });
 
-    const data = await response.json();
-    
-    if (!data.ok) {
-      throw new Error(data.error || "Invalid login credentials. Check your Church Code and Password.");
-    }
+    const member = data.member || {};
 
     await saveSession({
-      inviteCode: data.churchCode || churchCode,
-      planStatus: data.planStatus || "ACTIVE",
-      role: data.role || "MEMBER",
-      email: data.email || emailOrPhone,
-      churchName: data.churchName
+      inviteCode: member.churchCode || churchCode,
+      churchCode: member.churchCode || churchCode,
+      planStatus: "ACTIVE",
+      role: member.role || "MEMBER",
+      email: member.email || (String(emailOrPhone).includes("@") ? emailOrPhone : ""),
+      phone: member.phone || (!String(emailOrPhone).includes("@") ? emailOrPhone : ""),
+      name: member.name || "",
+      churchName: member.churchName || null,
+      memberId: member.id || null,
+      status: member.status || "ACTIVE",
+      lastLoginAt: member.lastLoginAt || null,
     });
+
+    return member;
   }
 
   return (
-    <AuthContext.Provider value={{
-      tenant,
-      isLoading,
-      login,
-      logout,
-      createChurchAndLogin,
-      joinChurchAndLogin
-    }}>
+    <AuthContext.Provider
+      value={{
+        tenant,
+        isLoading,
+        login,
+        logout,
+        createChurchAndLogin,
+        joinChurchAndLogin,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
