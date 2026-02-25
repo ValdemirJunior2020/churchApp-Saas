@@ -1,7 +1,8 @@
 // File: src/screens/auth/WelcomeScreen.js (REPLACE)
+// ✅ Join Church now goes to real JoinChurch screen
 
 import React from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function WelcomeScreen({ navigation }) {
   return (
@@ -9,25 +10,13 @@ export default function WelcomeScreen({ navigation }) {
       <View style={styles.card}>
         <Text style={styles.kicker}>CHURCH SaaS</Text>
         <Text style={styles.title}>One app. Many churches.</Text>
-        <Text style={styles.sub}>
-          Pastors customize branding & giving. Members see the content.
-        </Text>
+        <Text style={styles.sub}>Pastors customize branding & giving. Members see the content.</Text>
 
         <Pressable style={styles.primary} onPress={() => navigation.navigate("CreateChurch")}>
           <Text style={styles.primaryText}>Create Church (Pastor)</Text>
         </Pressable>
 
-        {/* ✅ FIX: JoinChurch screen is not in your navigator, so do NOT navigate to it */}
-        <Pressable
-          style={styles.secondary}
-          onPress={() => {
-            Alert.alert(
-              "Join Church",
-              "Join Church screen is coming next. For now, please use Login if you already have a Church Code."
-            );
-            navigation.navigate("Login");
-          }}
-        >
+        <Pressable style={styles.secondary} onPress={() => navigation.navigate("JoinChurch")}>
           <Text style={styles.secondaryText}>Join Church (Member)</Text>
         </Pressable>
 

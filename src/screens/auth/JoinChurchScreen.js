@@ -1,114 +1,152 @@
-// src/screens/auth/JoinChurchScreen.js  (CREATE)
+// File: src/screens/auth/JoinChurchScreen.js (REPLACE)
+
 import React, { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useAuth } from "../../context/AuthContext";
 
-export default function JoinChurchScreen() {
+export default function JoinChurchScreen({ navigation }) {
   const { joinChurchAndLogin } = useAuth();
 
-  const [inviteCode, setInviteCode] = useState("");
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [form, setForm] = useState({
+    churchCode: "",
+    name: "",
+    phone: "",
+    email: "",
+    password: "",
+  });
+
   const [busy, setBusy] = useState(false);
 
   async function onSubmit() {
     try {
       setBusy(true);
-      await joinChurchAndLogin({ inviteCode, name, phone, email, password });
+      await joinChurchAndLogin(form);
+      // ✅ After saving session, AppNavigator will automatically route to MemberTabs/AdminTabs
     } catch (e) {
-      Alert.alert("Error", String(e?.message || e));
+      Alert.alert("Join failed", String(e?.message || e));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <View style={styles.root}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Join Church</Text>
-        <Text style={styles.sub}>Enter the Church Code your Pastor gave you.</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: "#F5F7FB" }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
+        <View style={styles.card}>
+          <Text style={styles.kicker}>MEMBER</Text>
+          <Text style={styles.title}>Join a Church</Text>
+          <Text style={styles.sub}>
+            Enter the Church Code + create your account. After that, you won’t need to type the code again.
+          </Text>
 
-        <TextInput
-          value={inviteCode}
-          onChangeText={setInviteCode}
-          placeholder="Church Code (example: SANCT-001)"
-          style={styles.input}
-          autoCapitalize="characters"
-          placeholderTextColor="#94a3b8"
-        />
+          <TextInput
+            value={form.churchCode}
+            onChangeText={(v) => setForm((p) => ({ ...p, churchCode: v }))}
+            placeholder="Church Code (example: HOLYA-301)"
+            autoCapitalize="characters"
+            style={styles.input}
+          />
 
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder="Your Name"
-          style={styles.input}
-          placeholderTextColor="#94a3b8"
-        />
-        <TextInput
-          value={phone}
-          onChangeText={setPhone}
-          placeholder="Phone"
-          style={styles.input}
-          keyboardType="phone-pad"
-          placeholderTextColor="#94a3b8"
-        />
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="Email (optional)"
-          style={styles.input}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          placeholderTextColor="#94a3b8"
-        />
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Password"
-          style={styles.input}
-          secureTextEntry
-          placeholderTextColor="#94a3b8"
-        />
+          <TextInput
+            value={form.name}
+            onChangeText={(v) => setForm((p) => ({ ...p, name: v }))}
+            placeholder="Your Name"
+            style={styles.input}
+          />
 
-        <Pressable style={[styles.primary, busy && { opacity: 0.6 }]} onPress={onSubmit} disabled={busy}>
-          <Text style={styles.primaryText}>{busy ? "Joining..." : "Join & Login"}</Text>
-        </Pressable>
-      </View>
-    </View>
+          <TextInput
+            value={form.phone}
+            onChangeText={(v) => setForm((p) => ({ ...p, phone: v }))}
+            placeholder="Phone"
+            keyboardType="phone-pad"
+            style={styles.input}
+          />
+
+          <TextInput
+            value={form.email}
+            onChangeText={(v) => setForm((p) => ({ ...p, email: v }))}
+            placeholder="Email"
+            autoCapitalize="none"
+            keyboardType="email-address"
+            style={styles.input}
+          />
+
+          <TextInput
+            value={form.password}
+            onChangeText={(v) => setForm((p) => ({ ...p, password: v }))}
+            placeholder="Password"
+            secureTextEntry
+            style={styles.input}
+          />
+
+          <Pressable onPress={onSubmit} disabled={busy} style={[styles.primary, busy && { opacity: 0.75 }]}>
+            <Text style={styles.primaryText}>{busy ? "Creating..." : "Join & Create Account"}</Text>
+          </Pressable>
+
+          <Pressable onPress={() => navigation.navigate("Login")} style={styles.link}>
+            <Text style={styles.linkText}>I already have an account → Login</Text>
+          </Pressable>
+
+          <Pressable onPress={() => navigation.goBack()} style={styles.back}>
+            <Text style={styles.backText}>← Back</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f4f6fb", padding: 16, justifyContent: "center" },
+  wrap: { flexGrow: 1, padding: 18, justifyContent: "center" },
   card: {
-    backgroundColor: "rgba(255,255,255,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.12)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     borderRadius: 26,
     padding: 18,
-  },
-  title: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
-  sub: { marginTop: 6, color: "#586174", fontWeight: "700" },
-  input: {
-    marginTop: 10,
-    height: 48,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    backgroundColor: "rgba(15,23,42,0.06)",
     borderWidth: 1,
     borderColor: "rgba(15,23,42,0.10)",
-    color: "#0f172a",
-    fontWeight: "800",
   },
+  kicker: { fontSize: 11, letterSpacing: 2.5, color: "#64748b", fontWeight: "900" },
+  title: { marginTop: 8, fontSize: 22, fontWeight: "900", color: "#0f172a" },
+  sub: { marginTop: 8, color: "#586174", fontWeight: "700", lineHeight: 18 },
+
+  input: {
+    height: 50,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    backgroundColor: "#F2F4F8",
+    marginTop: 10,
+    fontWeight: "800",
+    color: "#0f172a",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.10)",
+  },
+
   primary: {
     marginTop: 14,
-    height: 52,
+    height: 54,
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0f172a",
   },
   primaryText: { color: "white", fontWeight: "900" },
+
+  link: { marginTop: 14, alignItems: "center" },
+  linkText: { color: "#2563eb", fontWeight: "900" },
+
+  back: { marginTop: 12, alignItems: "center" },
+  backText: { color: "#64748b", fontWeight: "800" },
 });

@@ -1,5 +1,6 @@
-// File: src/AppNavigator.js
-// Adds a visible Logout button in the header for Admin + Member tabs
+// File: src/AppNavigator.js (REPLACE)
+// ✅ Adds JoinChurch to AuthStack so the warning disappears
+// ✅ Adds Events tab for members (optional but recommended)
 
 import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
@@ -12,12 +13,15 @@ import { useAuth } from "./context/AuthContext";
 // Auth Screens
 import WelcomeScreen from "./screens/auth/WelcomeScreen";
 import CreateChurchScreen from "./screens/auth/CreateChurchScreen";
+import JoinChurchScreen from "./screens/auth/JoinChurchScreen";
 import LoginScreen from "./screens/auth/LoginScreen";
 import PaymentRequiredScreen from "./screens/auth/PaymentRequiredScreen";
 
 // Member/Admin Screens
 import HomeScreen from "./screens/member/HomeScreen";
 import GivingScreen from "./screens/member/GivingScreen";
+import EventsScreen from "./screens/member/EventsScreen";
+
 import AdminSettingsScreen from "./screens/admin/AdminSettingsScreen";
 import MemberManagerScreen from "./screens/admin/MemberManagerScreen";
 
@@ -33,17 +37,10 @@ function LogoutButton() {
 
   async function onLogout() {
     try {
-      const ok = typeof window !== "undefined" && window.confirm
-        ? window.confirm("Log out now?")
-        : true;
-
+      const ok = typeof window !== "undefined" && window.confirm ? window.confirm("Log out now?") : true;
       if (!ok) return;
-
-      console.log("[AppNavigator] Logout clicked");
       await logout();
-      console.log("[AppNavigator] Logout success");
     } catch (e) {
-      console.log("[AppNavigator] Logout error:", e?.message || e);
       Alert.alert("Logout failed", e?.message || "Something went wrong");
     }
   }
@@ -69,6 +66,7 @@ function AuthStack() {
     <Stack.Navigator initialRouteName="Welcome" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Welcome" component={WelcomeScreen} />
       <Stack.Screen name="CreateChurch" component={CreateChurchScreen} />
+      <Stack.Screen name="JoinChurch" component={JoinChurchScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="PaymentRequired" component={PaymentRequiredScreen} />
     </Stack.Navigator>
@@ -85,6 +83,7 @@ function MemberTabs() {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Giving" component={GivingScreen} />
+      <Tab.Screen name="Events" component={EventsScreen} />
     </Tab.Navigator>
   );
 }

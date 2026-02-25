@@ -1,12 +1,17 @@
-// File: src/context/AuthContext.js
-// REPLACE ENTIRE FILE (keeps your flow, fixes GAS 405 + login response shape + auto-admin access)
+// File: src/context/AuthContext.js (REPLACE)
+// ✅ Member first-time signup creates a MEMBER row in Google Sheet
+// ✅ After first login, we store churchCode so user does NOT type it again
+// ✅ Uses text/plain POST via gasClient to avoid GAS preflight OPTIONS issues
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { gasPost } from "../api/gasClient";
 
 const AuthContext = createContext({});
+
+const STORAGE_KEY = "@congregate_tenant";
+const LAST_LOGIN_KEY = "@congregate_last_login"; // { churchCode, emailOrPhone }
 
 export function AuthProvider({ children }) {
   const [tenant, setTenant] = useState(null);
@@ -18,10 +23,10 @@ export function AuthProvider({ children }) {
 
   async function loadSession() {
     try {
-      const stored = await AsyncStorage.getItem("@congregate_tenant");
+      const stored = await AsyncStorage.getItem(STORAGE_KEY);
       if (stored) setTenant(JSON.parse(stored));
     } catch (e) {
-      console.error("Failed to load session", e);
+      console.log("[AuthContext] loadSession error:", e?.message || e);
     } finally {
       setIsLoading(false);
     }
@@ -29,15 +34,35 @@ export function AuthProvider({ children }) {
 
   async function saveSession(data) {
     setTenant(data);
-    await AsyncStorage.setItem("@congregate_tenant", JSON.stringify(data));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
 
   async function logout() {
     setTenant(null);
-    await AsyncStorage.removeItem("@congregate_tenant");
+    await AsyncStorage.removeItem(STORAGE_KEY);
   }
 
-  // Pastor creates church -> immediately enters admin area (ACTIVE for now)
+  async function saveLastLogin({ churchCode, emailOrPhone }) {
+    try {
+      await AsyncStorage.setItem(
+        LAST_LOGIN_KEY,
+        JSON.stringify({ churchCode, emailOrPhone })
+      );
+    } catch {}
+  }
+
+  async function loadLastLogin() {
+    try {
+      const raw = await AsyncStorage.getItem(LAST_LOGIN_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ==========================================
+  // 1) PASTOR CREATES CHURCH (ADMIN)
+  // ==========================================
   async function createChurchAndLogin({ churchName, pastorName, phone, email, password }) {
     const data = await gasPost("billing", {
       action: "start",
@@ -46,85 +71,115 @@ export function AuthProvider({ children }) {
       adminEmail: email,
       adminPhone: phone,
       adminPassword: password,
-      plan: "PRO",
     });
 
-    const session = {
-      inviteCode: data.churchCode,
-      churchCode: data.churchCode,
-      churchName,
-      planStatus: "ACTIVE", // <- onboarding access unlocked for now
-      sessionId: data.sessionId || null,
-      checkoutUrl: data.checkoutUrl || null,
-      role: "ADMIN",
-      email,
-      phone,
-      name: pastorName,
-    };
-
-    await saveSession(session);
-
-    if (data.checkoutUrl) {
-      Linking.openURL(data.checkoutUrl).catch((err) =>
-        console.error("Couldn't open payment page", err)
-      );
+    if (!data?.ok) {
+      throw new Error(data?.error || "Failed to create church.");
     }
 
-    return data;
+    const churchCode = data.churchCode;
+
+    await saveSession({
+      inviteCode: churchCode,
+      churchCode,
+      churchName,
+      planStatus: "PENDING",
+      sessionId: data.sessionId,
+      checkoutUrl: data.checkoutUrl,
+      role: "ADMIN",
+      email,
+      name: pastorName,
+    });
+
+    await saveLastLogin({ churchCode, emailOrPhone: email });
+
+    if (data.checkoutUrl) {
+      Linking.openURL(data.checkoutUrl).catch(() => {});
+    }
   }
 
-  // NOTE: backend auth/signup endpoint not implemented in your Code.gs yet
-  async function joinChurchAndLogin({ inviteCode, name, phone, email, password }) {
-    const data = await gasPost("auth", {
-      action: "signup",
-      churchCode: inviteCode,
+  // ==========================================
+  // 2) MEMBER JOINS (FIRST TIME) => CREATES MEMBER ROW
+  // ==========================================
+  async function joinChurchAndLogin({ churchCode, name, phone, email, password }) {
+    const cc = String(churchCode || "").trim().toUpperCase();
+    if (!cc) throw new Error("Church Code is required.");
+
+    const data = await gasPost("members", {
+      action: "register",
+      churchCode: cc,
       name,
-      email,
       phone,
+      email,
       password,
     });
 
+    if (!data?.ok) {
+      throw new Error(data?.error || "Could not create member account.");
+    }
+
     const member = data.member || {};
+    const church = data.church || {};
+
     await saveSession({
-      inviteCode: member.churchCode || data.churchCode || inviteCode,
-      churchCode: member.churchCode || data.churchCode || inviteCode,
-      planStatus: data.planStatus || "ACTIVE",
-      role: member.role || data.role || "MEMBER",
-      email: member.email || email || "",
-      phone: member.phone || phone || "",
-      name: member.name || name || "",
-      churchName: data.churchName || member.churchName || null,
+      inviteCode: member.churchCode || cc,
+      churchCode: member.churchCode || cc,
+      churchName: church.churchName || "",
+      planStatus: String(church.status || "ACTIVE").toUpperCase(),
+      role: "MEMBER",
+      email: member.email || email,
+      phone: member.phone || phone,
+      name: member.name || name,
       memberId: member.id || null,
+      lastLoginAt: member.lastLoginAt || null,
     });
 
-    return data;
+    await saveLastLogin({ churchCode: cc, emailOrPhone: email || phone });
   }
 
+  // ==========================================
+  // 3) RETURNING LOGIN
+  // - If churchCode is empty, we use last saved churchCode (so user doesn't type it again)
+  // ==========================================
   async function login({ churchCode, emailOrPhone, password }) {
+    const last = await loadLastLogin();
+
+    const cc =
+      String(churchCode || "").trim().toUpperCase() ||
+      String(last?.churchCode || "").trim().toUpperCase();
+
+    if (!cc) {
+      throw new Error("Church Code required the first time. After login, it will be remembered.");
+    }
+
     const data = await gasPost("auth", {
       action: "login",
-      churchCode,
+      churchCode: cc,
       emailOrPhone,
       password,
     });
 
+    if (!data?.ok) {
+      throw new Error(data?.error || "Invalid login.");
+    }
+
     const member = data.member || {};
+    const church = data.church || {};
 
     await saveSession({
-      inviteCode: member.churchCode || churchCode,
-      churchCode: member.churchCode || churchCode,
-      planStatus: "ACTIVE",
-      role: member.role || "MEMBER",
+      inviteCode: member.churchCode || cc,
+      churchCode: member.churchCode || cc,
+      churchName: church.churchName || member.churchName || "",
+      planStatus: String(church.status || "ACTIVE").toUpperCase(),
+      role: String(member.role || "MEMBER").toUpperCase(),
       email: member.email || (String(emailOrPhone).includes("@") ? emailOrPhone : ""),
       phone: member.phone || (!String(emailOrPhone).includes("@") ? emailOrPhone : ""),
       name: member.name || "",
-      churchName: member.churchName || null,
       memberId: member.id || null,
-      status: member.status || "ACTIVE",
       lastLoginAt: member.lastLoginAt || null,
     });
 
-    return member;
+    await saveLastLogin({ churchCode: cc, emailOrPhone });
   }
 
   return (

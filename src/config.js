@@ -1,5 +1,5 @@
 export const GAS_URL =
-  "https://script.google.com/macros/s/AKfycby8GrObeVMAQTMymANC9b0HCohsV-MrHFnoLFsrGl3oVVfsUa6XxdWhH-U8_nJlWReh/exec";
+  "https://script.google.com/macros/s/AKfycbxf51aLvr5gqxpFSscOReiMiZlDhdXHVbgcGszVXB0NqpTcbyzzcVm6pTxeELH11RwL/exec";
 
 export const GAS_API_KEY = "";
 
