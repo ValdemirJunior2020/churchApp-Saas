@@ -1,164 +1,184 @@
-// File: src/context/AppDataContext.js
+// REPLACE: src/context/AppDataContext.js
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from "react";
-import { gasGet, gasPost } from "../api/gasClient";
+import { db } from "../firebase";
 import { useAuth } from "./AuthContext";
+import { extractYouTubeVideoId } from "../utils/youtube";
 
 const AppDataContext = createContext(null);
 
 export function AppDataProvider({ children }) {
   const { tenant } = useAuth();
+  const churchCode = tenant?.churchCode || "";
 
-  const [members, setMembers] = useState([]);
   const [churchSettings, setChurchSettings] = useState(null);
   const [donations, setDonations] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [members, setMembers] = useState([]);
   const [isLoadingAppData, setIsLoadingAppData] = useState(false);
 
-  const churchCode = tenant?.churchCode || tenant?.inviteCode || "";
-
-  const refreshMembers = useCallback(async () => {
-    if (!churchCode) {
-      console.log("[AppDataContext] refreshMembers skipped: no churchCode");
-      setMembers([]);
-      return [];
-    }
-
-    console.log("[AppDataContext] refreshMembers start:", churchCode);
-
+  const refreshChurch = useCallback(async () => {
+    if (!churchCode) return null;
+    setIsLoadingAppData(true);
     try {
-      const data = await gasGet("members", { action: "list", churchCode });
-      const rows = Array.isArray(data?.members)
-        ? data.members
-        : Array.isArray(data?.items)
-        ? data.items
-        : [];
-
-      setMembers(rows);
-      console.log("[AppDataContext] refreshMembers loaded:", rows.length);
-      return rows;
-    } catch (err) {
-      console.log(
-        "[AppDataContext] refreshMembers failed (endpoint missing is ok for now):",
-        err?.message || err
-      );
-      setMembers([]);
-      return [];
-    }
-  }, [churchCode]);
-
-  const refreshChurchSettings = useCallback(async () => {
-    if (!churchCode) {
-      console.log("[AppDataContext] refreshChurchSettings skipped: no churchCode");
-      return null;
-    }
-
-    try {
-      setIsLoadingAppData(true);
-      console.log("[AppDataContext] refreshChurchSettings start:", churchCode);
-
-      const data = await gasGet("church", { action: "get", churchCode });
-
-      if (data?.church) setChurchSettings(data.church);
-      if (Array.isArray(data?.donations)) setDonations(data.donations);
-
-      console.log("[AppDataContext] refreshChurchSettings success");
-      return data;
-    } catch (err) {
-      console.log("[AppDataContext] refreshChurchSettings error:", err?.message || err);
-      throw err;
+      const snap = await getDoc(doc(db, "churches", churchCode));
+      if (!snap.exists()) {
+        setChurchSettings(null);
+        setDonations([]);
+        return null;
+      }
+      const church = snap.data() || {};
+      setChurchSettings(church);
+      setDonations(Array.isArray(church.donations) ? church.donations : []);
+      return church;
     } finally {
       setIsLoadingAppData(false);
     }
   }, [churchCode]);
 
+  const refreshMembers = useCallback(async () => {
+    if (!churchCode) return [];
+    const q = query(collection(db, "churches", churchCode, "members"), orderBy("createdAt", "desc"));
+    const snap = await getDocs(q);
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    setMembers(rows);
+    return rows;
+  }, [churchCode]);
+
+  const refreshEvents = useCallback(async () => {
+    if (!churchCode) return [];
+    const q = query(collection(db, "churches", churchCode, "events"), orderBy("date", "asc"));
+    const snap = await getDocs(q);
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    setEvents(rows);
+    return rows;
+  }, [churchCode]);
+
+  // ✅ Auto-load after login so Apple instantly sees content
+  useEffect(() => {
+    if (!churchCode) {
+      setChurchSettings(null);
+      setDonations([]);
+      setEvents([]);
+      setMembers([]);
+      return;
+    }
+    refreshChurch().catch(() => {});
+    refreshEvents().catch(() => {});
+    if (String(tenant?.role || "").toUpperCase() === "ADMIN") {
+      refreshMembers().catch(() => {});
+    }
+  }, [churchCode, tenant?.role, refreshChurch, refreshEvents, refreshMembers]);
+
   const saveChurchSettings = useCallback(
-    async (payload) => {
+    async ({ churchName, logoUrl, youtubeUrl, planStatus }) => {
       if (!churchCode) throw new Error("Missing churchCode");
-
-      console.log("[AppDataContext] saveChurchSettings clicked");
-      console.log("[AppDataContext] saveChurchSettings payload:", {
-        churchCode,
-        ...payload,
+      const youtubeVideoId = extractYouTubeVideoId(youtubeUrl);
+      await updateDoc(doc(db, "churches", churchCode), {
+        churchName: String(churchName || "").trim(),
+        logoUrl: String(logoUrl || "").trim(),
+        youtubeUrl: String(youtubeUrl || "").trim(),
+        youtubeVideoId,
+        planStatus: String(planStatus || "ACTIVE").trim().toUpperCase(),
+        updatedAt: serverTimestamp(),
       });
-
-      const data = await gasPost("church", {
-        action: "save",
-        churchCode,
-        ...payload,
-      });
-
-      console.log("[AppDataContext] saveChurchSettings response:", data);
-
-      if (data?.church) setChurchSettings(data.church);
-      return data;
+      return refreshChurch();
     },
-    [churchCode]
+    [churchCode, refreshChurch]
   );
 
   const saveDonations = useCallback(
     async (items) => {
       if (!churchCode) throw new Error("Missing churchCode");
+      const clean = (Array.isArray(items) ? items : [])
+        .map((x) => ({
+          label: String(x?.label || "").trim(),
+          url: String(x?.url || "").trim(),
+        }))
+        .filter((x) => x.label && x.url);
 
-      console.log("[AppDataContext] saveDonations clicked");
-      console.log(
-        "[AppDataContext] saveDonations count:",
-        Array.isArray(items) ? items.length : 0
-      );
-
-      const data = await gasPost("donations", {
-        action: "save",
-        churchCode,
-        items: Array.isArray(items) ? items : [],
+      await updateDoc(doc(db, "churches", churchCode), {
+        donations: clean,
+        updatedAt: serverTimestamp(),
       });
 
-      console.log("[AppDataContext] saveDonations response:", data);
-
-      if (Array.isArray(data?.items)) setDonations(data.items);
-      return data;
+      setDonations(clean);
+      return clean;
     },
     [churchCode]
   );
 
   const updateMember = useCallback(
-    async (payload) => {
+    async ({ id, role, status, name, phone }) => {
       if (!churchCode) throw new Error("Missing churchCode");
-
-      console.log("[AppDataContext] updateMember payload:", payload);
-
-      const data = await gasPost("members", {
-        action: "update",
-        churchCode,
-        ...payload,
+      if (!id) throw new Error("Missing member id");
+      await updateDoc(doc(db, "churches", churchCode, "members", id), {
+        ...(role ? { role: String(role).toUpperCase() } : {}),
+        ...(status ? { status: String(status).toUpperCase() } : {}),
+        ...(name != null ? { name: String(name) } : {}),
+        ...(phone != null ? { phone: String(phone) } : {}),
+        updatedAt: serverTimestamp(),
       });
-
-      await refreshMembers();
-      return data;
+      return refreshMembers();
     },
     [churchCode, refreshMembers]
   );
 
   const deleteMember = useCallback(
-    async (payload) => {
+    async ({ id }) => {
       if (!churchCode) throw new Error("Missing churchCode");
-
-      console.log("[AppDataContext] deleteMember payload:", payload);
-
-      const data = await gasPost("members", {
-        action: "delete",
-        churchCode,
-        ...payload,
-      });
-
-      await refreshMembers();
-      return data;
+      if (!id) throw new Error("Missing member id");
+      await deleteDoc(doc(db, "churches", churchCode, "members", id));
+      return refreshMembers();
     },
     [churchCode, refreshMembers]
+  );
+
+  const upsertEvent = useCallback(
+    async ({ id, title, date, location, description }) => {
+      if (!churchCode) throw new Error("Missing churchCode");
+      const ref = id
+        ? doc(db, "churches", churchCode, "events", id)
+        : doc(collection(db, "churches", churchCode, "events"));
+
+      await setDoc(
+        ref,
+        {
+          title: String(title || "").trim(),
+          date: String(date || "").trim(), // store as YYYY-MM-DD string
+          location: String(location || "").trim(),
+          description: String(description || "").trim(),
+          updatedAt: serverTimestamp(),
+          ...(id ? {} : { createdAt: serverTimestamp() }),
+        },
+        { merge: true }
+      );
+
+      return refreshEvents();
+    },
+    [churchCode, refreshEvents]
+  );
+
+  const deleteEvent = useCallback(
+    async ({ id }) => {
+      if (!churchCode) throw new Error("Missing churchCode");
+      if (!id) throw new Error("Missing event id");
+      await deleteDoc(doc(db, "churches", churchCode, "events", id));
+      return refreshEvents();
+    },
+    [churchCode, refreshEvents]
   );
 
   const value = useMemo(
@@ -166,29 +186,35 @@ export function AppDataProvider({ children }) {
       tenant,
       churchSettings,
       donations,
+      events,
       members,
       isLoadingAppData,
-
-      refreshChurchSettings,
+      refreshChurch,
+      refreshMembers,
+      refreshEvents,
       saveChurchSettings,
       saveDonations,
-
-      refreshMembers,
       updateMember,
       deleteMember,
+      upsertEvent,
+      deleteEvent,
     }),
     [
       tenant,
       churchSettings,
       donations,
+      events,
       members,
       isLoadingAppData,
-      refreshChurchSettings,
+      refreshChurch,
+      refreshMembers,
+      refreshEvents,
       saveChurchSettings,
       saveDonations,
-      refreshMembers,
       updateMember,
       deleteMember,
+      upsertEvent,
+      deleteEvent,
     ]
   );
 
@@ -197,8 +223,6 @@ export function AppDataProvider({ children }) {
 
 export function useAppData() {
   const ctx = useContext(AppDataContext);
-  if (!ctx) {
-    throw new Error("useAppData must be used inside AppDataProvider");
-  }
+  if (!ctx) throw new Error("useAppData must be used inside AppDataProvider");
   return ctx;
 }
