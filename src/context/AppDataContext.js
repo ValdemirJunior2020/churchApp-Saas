@@ -1,182 +1,221 @@
-// src/context/AppDataContext.js
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { GAS_URL } from "../config";
+// REPLACE: src/context/AppDataContext.js
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
+
+import { db } from "../firebase";
+import { useAuth } from "./AuthContext";
+import { extractYouTubeVideoId } from "../utils/youtube";
 
 const AppDataContext = createContext(null);
 
-const STORAGE_KEYS = {
-  TENANT: "@church_saas_tenant_v1",
-  CONFIG: "@church_saas_config_v1",
-  MEMBERS: "@church_saas_members_v1",
-};
-
-const DEFAULT_CONFIG = {
-  churchName: "Congregate",
-  address: "",
-  logoUrl: "",
-  youtubeId: "",
-  donationLinks: [],
-};
-
-function uid() {
-  return Math.random().toString(16).slice(2) + Date.now().toString(16);
-}
-
-async function callApi({ resource, action, method = "GET", params = {}, body }) {
-  if (!GAS_URL || !String(GAS_URL).includes("/macros/s/") || !String(GAS_URL).includes("/exec")) {
-    throw new Error("GAS_URL not set (local mode).");
-  }
-
-  const url = new URL(GAS_URL);
-  url.searchParams.set("resource", resource);
-  url.searchParams.set("action", action);
-
-  Object.entries(params || {}).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && String(v).length) url.searchParams.set(k, String(v));
-  });
-
-  const init = method === "POST" ? { method: "POST", body: JSON.stringify(body || {}) } : { method: "GET" };
-
-  const res = await fetch(url.toString(), init);
-  const text = await res.text();
-
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(text?.slice(0, 200) || "Invalid JSON from GAS");
-  }
-
-  if (!json.ok) throw new Error(json.error || "GAS request failed");
-  return json.data;
-}
-
 export function AppDataProvider({ children }) {
-  const [tenantCode, setTenantCodeState] = useState("");
-  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const { tenant } = useAuth();
+  const churchCode = tenant?.churchCode || "";
+
+  const [churchSettings, setChurchSettings] = useState(null);
+  const [donations, setDonations] = useState([]);
+  const [events, setEvents] = useState([]);
   const [members, setMembers] = useState([]);
-  const [ready, setReady] = useState(false);
+  const [isLoadingAppData, setIsLoadingAppData] = useState(false);
 
-  const apiEnabled = useMemo(() => !!GAS_URL && String(GAS_URL).includes("/exec"), []);
-
-  async function loadLocal() {
-    const [t, c, m] = await Promise.all([
-      AsyncStorage.getItem(STORAGE_KEYS.TENANT),
-      AsyncStorage.getItem(STORAGE_KEYS.CONFIG),
-      AsyncStorage.getItem(STORAGE_KEYS.MEMBERS),
-    ]);
-
-    if (t) setTenantCodeState(t);
-    if (c) setConfig(JSON.parse(c));
-    if (m) setMembers(JSON.parse(m));
-  }
-
-  async function saveLocal(nextTenant, nextConfig, nextMembers) {
-    await Promise.all([
-      AsyncStorage.setItem(STORAGE_KEYS.TENANT, nextTenant || ""),
-      AsyncStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(nextConfig)),
-      AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(nextMembers)),
-    ]);
-  }
-
-  useEffect(() => {
-    (async () => {
-      try {
-        await loadLocal();
-        // (optional) later: fetch tenant bootstrap from GAS here
-      } finally {
-        setReady(true);
+  const refreshChurch = useCallback(async () => {
+    if (!churchCode) return null;
+    setIsLoadingAppData(true);
+    try {
+      const snap = await getDoc(doc(db, "churches", churchCode));
+      if (!snap.exists()) {
+        setChurchSettings(null);
+        setDonations([]);
+        return null;
       }
-    })();
-  }, []);
-
-  async function setTenantCode(code) {
-    const next = String(code || "").trim().toUpperCase();
-    setTenantCodeState(next);
-    await saveLocal(next, config, members);
-
-    if (apiEnabled) {
-      try {
-        await callApi({ resource: "tenant", action: "select", method: "POST", body: { tenantCode: next } });
-      } catch {}
+      const church = snap.data() || {};
+      setChurchSettings(church);
+      setDonations(Array.isArray(church.donations) ? church.donations : []);
+      return church;
+    } finally {
+      setIsLoadingAppData(false);
     }
-  }
+  }, [churchCode]);
 
-  async function updateConfig(patch) {
-    const next = { ...config, ...patch };
-    setConfig(next);
-    await saveLocal(tenantCode, next, members);
+  const refreshMembers = useCallback(async () => {
+    if (!churchCode) return [];
+    const q = query(collection(db, "churches", churchCode, "members"), orderBy("createdAt", "desc"));
+    const snap = await getDocs(q);
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    setMembers(rows);
+    return rows;
+  }, [churchCode]);
 
-    if (apiEnabled) {
-      try {
-        await callApi({ resource: "config", action: "set", method: "POST", body: { tenantCode, config: next } });
-      } catch {}
+  const refreshEvents = useCallback(async () => {
+    if (!churchCode) return [];
+    const q = query(collection(db, "churches", churchCode, "events"), orderBy("date", "asc"));
+    const snap = await getDocs(q);
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    setEvents(rows);
+    return rows;
+  }, [churchCode]);
+
+  // ✅ Auto-load after login so Apple instantly sees content
+  useEffect(() => {
+    if (!churchCode) {
+      setChurchSettings(null);
+      setDonations([]);
+      setEvents([]);
+      setMembers([]);
+      return;
     }
-  }
-
-  async function addDonationLink({ type, label, url }) {
-    const nextLinks = [...(config.donationLinks || []), { id: uid(), type, label: label || type, url }];
-    await updateConfig({ donationLinks: nextLinks });
-  }
-
-  async function removeDonationLink(id) {
-    const nextLinks = (config.donationLinks || []).filter((x) => x.id !== id);
-    await updateConfig({ donationLinks: nextLinks });
-  }
-
-  async function addMember(member) {
-    const nextMembers = [...members, member];
-    setMembers(nextMembers);
-    await saveLocal(tenantCode, config, nextMembers);
-
-    if (apiEnabled) {
-      try {
-        await callApi({ resource: "users", action: "create", method: "POST", body: { tenantCode, user: member } });
-      } catch {}
+    refreshChurch().catch(() => {});
+    refreshEvents().catch(() => {});
+    if (String(tenant?.role || "").toUpperCase() === "ADMIN") {
+      refreshMembers().catch(() => {});
     }
-  }
+  }, [churchCode, tenant?.role, refreshChurch, refreshEvents, refreshMembers]);
 
-  async function updateMember(id, patch) {
-    const nextMembers = members.map((m) => (m.id === id ? { ...m, ...patch } : m));
-    setMembers(nextMembers);
-    await saveLocal(tenantCode, config, nextMembers);
+  const saveChurchSettings = useCallback(
+    async ({ churchName, logoUrl, youtubeUrl, planStatus }) => {
+      if (!churchCode) throw new Error("Missing churchCode");
+      const youtubeVideoId = extractYouTubeVideoId(youtubeUrl);
+      await updateDoc(doc(db, "churches", churchCode), {
+        churchName: String(churchName || "").trim(),
+        logoUrl: String(logoUrl || "").trim(),
+        youtubeUrl: String(youtubeUrl || "").trim(),
+        youtubeVideoId,
+        planStatus: String(planStatus || "ACTIVE").trim().toUpperCase(),
+        updatedAt: serverTimestamp(),
+      });
+      return refreshChurch();
+    },
+    [churchCode, refreshChurch]
+  );
 
-    if (apiEnabled) {
-      try {
-        await callApi({ resource: "users", action: "update", method: "POST", body: { tenantCode, id, patch } });
-      } catch {}
-    }
-  }
+  const saveDonations = useCallback(
+    async (items) => {
+      if (!churchCode) throw new Error("Missing churchCode");
+      const clean = (Array.isArray(items) ? items : [])
+        .map((x) => ({
+          label: String(x?.label || "").trim(),
+          url: String(x?.url || "").trim(),
+        }))
+        .filter((x) => x.label && x.url);
 
-  async function deleteMember(id) {
-    const nextMembers = members.filter((m) => m.id !== id);
-    setMembers(nextMembers);
-    await saveLocal(tenantCode, config, nextMembers);
+      await updateDoc(doc(db, "churches", churchCode), {
+        donations: clean,
+        updatedAt: serverTimestamp(),
+      });
 
-    if (apiEnabled) {
-      try {
-        await callApi({ resource: "users", action: "delete", method: "POST", body: { tenantCode, id } });
-      } catch {}
-    }
-  }
+      setDonations(clean);
+      return clean;
+    },
+    [churchCode]
+  );
+
+  const updateMember = useCallback(
+    async ({ id, role, status, name, phone }) => {
+      if (!churchCode) throw new Error("Missing churchCode");
+      if (!id) throw new Error("Missing member id");
+      await updateDoc(doc(db, "churches", churchCode, "members", id), {
+        ...(role ? { role: String(role).toUpperCase() } : {}),
+        ...(status ? { status: String(status).toUpperCase() } : {}),
+        ...(name != null ? { name: String(name) } : {}),
+        ...(phone != null ? { phone: String(phone) } : {}),
+        updatedAt: serverTimestamp(),
+      });
+      return refreshMembers();
+    },
+    [churchCode, refreshMembers]
+  );
+
+  const deleteMember = useCallback(
+    async ({ id }) => {
+      if (!churchCode) throw new Error("Missing churchCode");
+      if (!id) throw new Error("Missing member id");
+      await deleteDoc(doc(db, "churches", churchCode, "members", id));
+      return refreshMembers();
+    },
+    [churchCode, refreshMembers]
+  );
+
+  const upsertEvent = useCallback(
+    async ({ id, title, date, location, description }) => {
+      if (!churchCode) throw new Error("Missing churchCode");
+      const ref = id
+        ? doc(db, "churches", churchCode, "events", id)
+        : doc(collection(db, "churches", churchCode, "events"));
+
+      await setDoc(
+        ref,
+        {
+          title: String(title || "").trim(),
+          date: String(date || "").trim(), // store as YYYY-MM-DD string
+          location: String(location || "").trim(),
+          description: String(description || "").trim(),
+          updatedAt: serverTimestamp(),
+          ...(id ? {} : { createdAt: serverTimestamp() }),
+        },
+        { merge: true }
+      );
+
+      return refreshEvents();
+    },
+    [churchCode, refreshEvents]
+  );
+
+  const deleteEvent = useCallback(
+    async ({ id }) => {
+      if (!churchCode) throw new Error("Missing churchCode");
+      if (!id) throw new Error("Missing event id");
+      await deleteDoc(doc(db, "churches", churchCode, "events", id));
+      return refreshEvents();
+    },
+    [churchCode, refreshEvents]
+  );
 
   const value = useMemo(
     () => ({
-      ready,
-      apiEnabled,
-      tenantCode,
-      setTenantCode,
-      config,
+      tenant,
+      churchSettings,
+      donations,
+      events,
       members,
-      updateConfig,
-      addDonationLink,
-      removeDonationLink,
-      addMember,
+      isLoadingAppData,
+      refreshChurch,
+      refreshMembers,
+      refreshEvents,
+      saveChurchSettings,
+      saveDonations,
       updateMember,
       deleteMember,
+      upsertEvent,
+      deleteEvent,
     }),
-    [ready, apiEnabled, tenantCode, config, members]
+    [
+      tenant,
+      churchSettings,
+      donations,
+      events,
+      members,
+      isLoadingAppData,
+      refreshChurch,
+      refreshMembers,
+      refreshEvents,
+      saveChurchSettings,
+      saveDonations,
+      updateMember,
+      deleteMember,
+      upsertEvent,
+      deleteEvent,
+    ]
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;

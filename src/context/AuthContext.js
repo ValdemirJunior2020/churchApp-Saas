@@ -52,9 +52,6 @@ async function postToGas(payload) {
   const response = await fetch(GAS_URL, {
     method: "POST",
     headers: {
-      // IMPORTANT:
-      // application/json causes a CORS preflight in web.
-      // text/plain keeps this request as a simple request.
       "Content-Type": "text/plain;charset=utf-8",
     },
     body: JSON.stringify(payload || {}),
