@@ -1,16 +1,25 @@
 // src/api/gasClient.js
-import { GAS_URL, GAS_API_KEY } from "../config";
+import { GAS_URL } from "../config";
 
 function withQuery(base, params) {
-  const entries = Object.entries(params || {}).filter(([_, v]) => v !== undefined && v !== null && String(v).trim() !== "");
-  const q = entries.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join("&");
+  const entries = Object.entries(params || {}).filter(
+    ([, v]) => v !== undefined && v !== null && String(v).trim() !== ""
+  );
+
+  const q = entries
+    .map(
+      ([k, v]) =>
+        `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`
+    )
+    .join("&");
+
   if (!q) return base;
   return base + (base.includes("?") ? "&" : "?") + q;
 }
 
 async function fetchJson(url, options = {}, timeoutMs = 20000) {
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url, { ...options, signal: controller.signal });
@@ -23,27 +32,34 @@ async function fetchJson(url, options = {}, timeoutMs = 20000) {
       data = { ok: false, error: "Non-JSON response", raw: text };
     }
 
-    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-    if (data && data.ok === false) throw new Error(data.error || "Request failed");
+    if (!res.ok) {
+      throw new Error(data?.error || `HTTP ${res.status}`);
+    }
+
+    if (data && data.ok === false) {
+      throw new Error(data.error || "Request failed");
+    }
 
     return data?.data ?? data;
   } finally {
-    clearTimeout(t);
+    clearTimeout(timer);
   }
 }
 
-export async function gasGet(resource) {
-  const url = withQuery(GAS_URL, { key: GAS_API_KEY, resource });
+export async function gasGet(resource, params = {}) {
+  const url = withQuery(GAS_URL, { resource, ...params });
   return fetchJson(url, { method: "GET" });
 }
 
 export async function gasPost(resource, body = {}, params = {}) {
-  const url = withQuery(GAS_URL, { key: GAS_API_KEY, resource, ...params });
+  const url = withQuery(GAS_URL, { resource, ...params });
 
-  // NOTE: text/plain avoids extra complications in some environments
   return fetchJson(url, {
     method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    headers: {
+      // simple request for web
+      "Content-Type": "text/plain;charset=utf-8",
+    },
     body: JSON.stringify(body || {}),
   });
 }

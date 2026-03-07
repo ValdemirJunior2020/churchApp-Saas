@@ -1,29 +1,103 @@
 // src/context/AuthContext.js
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Linking } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxUQo4wZqra7KnMinDMqwABjvJXUVXstvup3xLu9ENPg0HCxEU98xhaYm6-naUL-T8B/exec";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { Linking, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  DEMO_ADMIN_EMAIL,
+  DEMO_ADMIN_PASSWORD,
+  DEMO_ADMIN_PHONE,
+  DEMO_INVITE_CODE,
+  GAS_URL,
+} from "../config";
 
 const AuthContext = createContext({});
+const SESSION_KEY = "@congregate_tenant";
+
+function normalize(value) {
+  return String(value || "").trim();
+}
+
+function upper(value) {
+  return normalize(value).toUpperCase();
+}
+
+function lower(value) {
+  return normalize(value).toLowerCase();
+}
+
+function isValidGasUrl(url) {
+  const s = String(url || "");
+  return s.includes("/macros/s/") && s.endsWith("/exec");
+}
+
+function isWeb() {
+  return Platform.OS === "web";
+}
+
+async function safeJsonFromResponse(res) {
+  const text = await res.text();
+
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error("Server returned an invalid response.");
+  }
+}
+
+async function postToGas(payload) {
+  if (!isValidGasUrl(GAS_URL)) {
+    throw new Error("Backend is not configured.");
+  }
+
+  const response = await fetch(GAS_URL, {
+    method: "POST",
+    headers: {
+      // IMPORTANT:
+      // application/json causes a CORS preflight in web.
+      // text/plain keeps this request as a simple request.
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify(payload || {}),
+  });
+
+  const data = await safeJsonFromResponse(response);
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || `Request failed (${response.status})`);
+  }
+
+  return data;
+}
+
+function buildDemoSession() {
+  return {
+    inviteCode: DEMO_INVITE_CODE,
+    churchName: "Apple Review Demo Church",
+    planStatus: "ACTIVE",
+    role: "ADMIN",
+    email: DEMO_ADMIN_EMAIL,
+    phone: DEMO_ADMIN_PHONE,
+    name: "Apple Review Admin",
+    isDemo: true,
+  };
+}
 
 export function AuthProvider({ children }) {
   const [tenant, setTenant] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load active session when the app starts
   useEffect(() => {
     loadSession();
   }, []);
 
   async function loadSession() {
     try {
-      const stored = await AsyncStorage.getItem('@congregate_tenant');
+      const stored = await AsyncStorage.getItem(SESSION_KEY);
       if (stored) {
         setTenant(JSON.parse(stored));
       }
-    } catch (e) {
-      console.error("Failed to load session", e);
+    } catch (error) {
+      console.error("Failed to load session", error);
     } finally {
       setIsLoading(false);
     }
@@ -31,132 +105,156 @@ export function AuthProvider({ children }) {
 
   async function saveSession(data) {
     setTenant(data);
-    await AsyncStorage.setItem('@congregate_tenant', JSON.stringify(data));
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(data));
   }
 
   async function logout() {
     setTenant(null);
-    await AsyncStorage.removeItem('@congregate_tenant');
+    await AsyncStorage.removeItem(SESSION_KEY);
   }
 
-  // ==========================================
-  // 1. PASTOR CREATES A NEW CHURCH
-  // ==========================================
-  async function createChurchAndLogin({ churchName, pastorName, phone, email, password }) {
-    // Calls the Code.gs billingStart_ endpoint which automatically generates a unique churchCode
-    const response = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resource: "billing",
-        action: "start",
-        churchName: churchName,
-        adminName: pastorName,
-        adminEmail: email,
-        adminPhone: phone,
-        adminPassword: password, // Handled securely by your Code.gs hash function
-        plan: "PRO"
-      }),
-    });
+  function matchesDemoLogin({ churchCode, emailOrPhone, password }) {
+    const code = upper(churchCode);
+    const loginValue = lower(emailOrPhone);
+    const rawPhone = normalize(emailOrPhone);
+    const pass = normalize(password);
 
-    const data = await response.json();
-    
-    if (!data.ok) {
-      throw new Error(data.error || "Failed to create church. Please try again.");
-    }
+    return (
+      code === upper(DEMO_INVITE_CODE) &&
+      pass === DEMO_ADMIN_PASSWORD &&
+      (loginValue === lower(DEMO_ADMIN_EMAIL) || rawPhone === DEMO_ADMIN_PHONE)
+    );
+  }
 
-    // Save to device storage. The app will detect planStatus: "PENDING"
-    // and route the Pastor to PaymentRequiredScreen
-    await saveSession({
-      inviteCode: data.churchCode, // The newly generated code!
-      churchName: churchName,
-      planStatus: "PENDING", 
-      sessionId: data.sessionId,
-      checkoutUrl: data.checkoutUrl,
-      role: "ADMIN",
-      email: email,
-      name: pastorName
-    });
+  async function createChurchAndLogin({
+    churchName,
+    pastorName,
+    phone,
+    email,
+    password,
+  }) {
+    const payload = {
+      resource: "billing",
+      action: "start",
+      churchName: normalize(churchName),
+      adminName: normalize(pastorName),
+      adminEmail: normalize(email),
+      adminPhone: normalize(phone),
+      adminPassword: normalize(password),
+      plan: "PRO",
+    };
 
-    // Automatically open the checkout URL so they can set up their PayPal subscription
-    if (data.checkoutUrl) {
-      Linking.openURL(data.checkoutUrl).catch(err => console.error("Couldn't open payment page", err));
+    try {
+      const data = await postToGas(payload);
+
+      await saveSession({
+        inviteCode: data.churchCode,
+        churchName: normalize(churchName),
+        planStatus: data.planStatus || "PENDING",
+        sessionId: data.sessionId || "",
+        checkoutUrl: data.checkoutUrl || "",
+        role: "ADMIN",
+        email: normalize(email),
+        phone: normalize(phone),
+        name: normalize(pastorName),
+        isDemo: false,
+      });
+
+      if (data.checkoutUrl && !isWeb()) {
+        Linking.openURL(data.checkoutUrl).catch((error) => {
+          console.error("Could not open payment page", error);
+        });
+      }
+    } catch (error) {
+      throw new Error(
+        error?.message || "Failed to create church. Please try again."
+      );
     }
   }
 
-  // ==========================================
-  // 2. MEMBER JOINS AN EXISTING CHURCH
-  // ==========================================
-  async function joinChurchAndLogin({ inviteCode, name, phone, email, password }) {
-    const response = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resource: "auth", // Adjust this if your actual Google Script auth endpoint differs
-        action: "signup",
-        churchCode: inviteCode,
-        name: name,
-        email: email,
-        phone: phone,
-        password: password
-      }),
-    });
+  async function joinChurchAndLogin({
+    inviteCode,
+    name,
+    phone,
+    email,
+    password,
+  }) {
+    const payload = {
+      resource: "auth",
+      action: "signup",
+      churchCode: upper(inviteCode),
+      name: normalize(name),
+      email: normalize(email),
+      phone: normalize(phone),
+      password: normalize(password),
+    };
 
-    const data = await response.json();
-    
-    if (!data.ok) {
-      throw new Error(data.error || "Invalid Church Code or account already exists.");
+    try {
+      const data = await postToGas(payload);
+
+      await saveSession({
+        inviteCode: data.churchCode || upper(inviteCode),
+        churchName: data.churchName || "Church",
+        planStatus: data.planStatus || "ACTIVE",
+        role: data.role || "MEMBER",
+        email: data.email || normalize(email),
+        phone: data.phone || normalize(phone),
+        name: data.name || normalize(name),
+        isDemo: false,
+      });
+    } catch (error) {
+      throw new Error(
+        error?.message || "Invalid Church Code or account already exists."
+      );
     }
-
-    await saveSession({
-      inviteCode: data.churchCode || inviteCode,
-      planStatus: data.planStatus || "ACTIVE", // Members inherit church's active status
-      role: "MEMBER",
-      email: email,
-      name: name
-    });
   }
 
-  // ==========================================
-  // 3. RETURNING USER LOGS IN
-  // ==========================================
   async function login({ churchCode, emailOrPhone, password }) {
-    const response = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resource: "auth", // Adjust this if your actual Google Script auth endpoint differs
-        action: "login",
-        churchCode: churchCode,
-        emailOrPhone: emailOrPhone,
-        password: password
-      }),
-    });
-
-    const data = await response.json();
-    
-    if (!data.ok) {
-      throw new Error(data.error || "Invalid login credentials. Check your Church Code and Password.");
+    if (matchesDemoLogin({ churchCode, emailOrPhone, password })) {
+      await saveSession(buildDemoSession());
+      return;
     }
 
-    await saveSession({
-      inviteCode: data.churchCode || churchCode,
-      planStatus: data.planStatus || "ACTIVE",
-      role: data.role || "MEMBER",
-      email: data.email || emailOrPhone,
-      churchName: data.churchName
-    });
+    const payload = {
+      resource: "auth",
+      action: "login",
+      churchCode: upper(churchCode),
+      emailOrPhone: normalize(emailOrPhone),
+      password: normalize(password),
+    };
+
+    try {
+      const data = await postToGas(payload);
+
+      await saveSession({
+        inviteCode: data.churchCode || upper(churchCode),
+        churchName: data.churchName || "Church",
+        planStatus: data.planStatus || "ACTIVE",
+        role: data.role || "MEMBER",
+        email: data.email || normalize(emailOrPhone),
+        phone: data.phone || "",
+        name: data.name || "",
+        isDemo: false,
+      });
+    } catch (error) {
+      throw new Error(
+        error?.message ||
+          "Invalid login credentials. Check your Church Code and Password."
+      );
+    }
   }
 
   return (
-    <AuthContext.Provider value={{
-      tenant,
-      isLoading,
-      login,
-      logout,
-      createChurchAndLogin,
-      joinChurchAndLogin
-    }}>
+    <AuthContext.Provider
+      value={{
+        tenant,
+        isLoading,
+        login,
+        logout,
+        createChurchAndLogin,
+        joinChurchAndLogin,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
