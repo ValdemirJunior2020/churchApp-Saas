@@ -34,13 +34,13 @@ function isWeb() {
   return Platform.OS === "web";
 }
 
-async function safeJsonFromResponse(res) {
-  const text = await res.text();
+async function parseResponse(response) {
+  const text = await response.text();
 
   try {
     return text ? JSON.parse(text) : {};
   } catch {
-    throw new Error("Server returned an invalid response.");
+    throw new Error(`Server returned non-JSON response: ${text.slice(0, 200)}`);
   }
 }
 
@@ -51,13 +51,15 @@ async function postToGas(payload) {
 
   const response = await fetch(GAS_URL, {
     method: "POST",
+    redirect: "follow",
     headers: {
       "Content-Type": "text/plain;charset=utf-8",
+      Accept: "application/json,text/plain,*/*",
     },
     body: JSON.stringify(payload || {}),
   });
 
-  const data = await safeJsonFromResponse(response);
+  const data = await parseResponse(response);
 
   if (!response.ok || !data?.ok) {
     throw new Error(data?.error || `Request failed (${response.status})`);
@@ -141,31 +143,25 @@ export function AuthProvider({ children }) {
       plan: "PRO",
     };
 
-    try {
-      const data = await postToGas(payload);
+    const data = await postToGas(payload);
 
-      await saveSession({
-        inviteCode: data.churchCode,
-        churchName: normalize(churchName),
-        planStatus: data.planStatus || "PENDING",
-        sessionId: data.sessionId || "",
-        checkoutUrl: data.checkoutUrl || "",
-        role: "ADMIN",
-        email: normalize(email),
-        phone: normalize(phone),
-        name: normalize(pastorName),
-        isDemo: false,
+    await saveSession({
+      inviteCode: data.churchCode || "",
+      churchName: normalize(churchName),
+      planStatus: data.planStatus || "PENDING",
+      sessionId: data.sessionId || "",
+      checkoutUrl: data.checkoutUrl || "",
+      role: "ADMIN",
+      email: normalize(email),
+      phone: normalize(phone),
+      name: normalize(pastorName),
+      isDemo: false,
+    });
+
+    if (data.checkoutUrl && !isWeb()) {
+      Linking.openURL(data.checkoutUrl).catch((error) => {
+        console.error("Could not open payment page", error);
       });
-
-      if (data.checkoutUrl && !isWeb()) {
-        Linking.openURL(data.checkoutUrl).catch((error) => {
-          console.error("Could not open payment page", error);
-        });
-      }
-    } catch (error) {
-      throw new Error(
-        error?.message || "Failed to create church. Please try again."
-      );
     }
   }
 
@@ -186,28 +182,35 @@ export function AuthProvider({ children }) {
       password: normalize(password),
     };
 
-    try {
-      const data = await postToGas(payload);
+    const data = await postToGas(payload);
 
-      await saveSession({
-        inviteCode: data.churchCode || upper(inviteCode),
-        churchName: data.churchName || "Church",
-        planStatus: data.planStatus || "ACTIVE",
-        role: data.role || "MEMBER",
-        email: data.email || normalize(email),
-        phone: data.phone || normalize(phone),
-        name: data.name || normalize(name),
-        isDemo: false,
-      });
-    } catch (error) {
-      throw new Error(
-        error?.message || "Invalid Church Code or account already exists."
-      );
-    }
+    await saveSession({
+      inviteCode: data.churchCode || upper(inviteCode),
+      churchName: data.churchName || "Church",
+      planStatus: data.planStatus || "ACTIVE",
+      role: data.role || "MEMBER",
+      email: data.email || normalize(email),
+      phone: data.phone || normalize(phone),
+      name: data.name || normalize(name),
+      isDemo: false,
+    });
   }
 
   async function login({ churchCode, emailOrPhone, password }) {
-    if (matchesDemoLogin({ churchCode, emailOrPhone, password })) {
+    const normalizedPayload = {
+      churchCode: upper(churchCode),
+      emailOrPhone: normalize(emailOrPhone),
+      password: normalize(password),
+    };
+
+    console.log("LOGIN ATTEMPT", {
+      churchCode: normalizedPayload.churchCode,
+      emailOrPhone: normalizedPayload.emailOrPhone,
+      passwordLength: normalizedPayload.password.length,
+    });
+
+    if (matchesDemoLogin(normalizedPayload)) {
+      console.log("DEMO LOGIN SUCCESS");
       await saveSession(buildDemoSession());
       return;
     }
@@ -215,30 +218,23 @@ export function AuthProvider({ children }) {
     const payload = {
       resource: "auth",
       action: "login",
-      churchCode: upper(churchCode),
-      emailOrPhone: normalize(emailOrPhone),
-      password: normalize(password),
+      churchCode: normalizedPayload.churchCode,
+      emailOrPhone: normalizedPayload.emailOrPhone,
+      password: normalizedPayload.password,
     };
 
-    try {
-      const data = await postToGas(payload);
+    const data = await postToGas(payload);
 
-      await saveSession({
-        inviteCode: data.churchCode || upper(churchCode),
-        churchName: data.churchName || "Church",
-        planStatus: data.planStatus || "ACTIVE",
-        role: data.role || "MEMBER",
-        email: data.email || normalize(emailOrPhone),
-        phone: data.phone || "",
-        name: data.name || "",
-        isDemo: false,
-      });
-    } catch (error) {
-      throw new Error(
-        error?.message ||
-          "Invalid login credentials. Check your Church Code and Password."
-      );
-    }
+    await saveSession({
+      inviteCode: data.churchCode || normalizedPayload.churchCode,
+      churchName: data.churchName || "Church",
+      planStatus: data.planStatus || "ACTIVE",
+      role: data.role || "MEMBER",
+      email: data.email || normalizedPayload.emailOrPhone,
+      phone: data.phone || "",
+      name: data.name || "",
+      isDemo: false,
+    });
   }
 
   return (

@@ -1,87 +1,170 @@
-// REPLACE: src/screens/auth/LoginScreen.js
+// src/screens/auth/LoginScreen.js
 import React, { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useAuth } from "../../context/AuthContext";
-import { DEMO_CHURCH_CODE } from "../../config";
+import {
+  DEMO_ADMIN_EMAIL,
+  DEMO_ADMIN_PASSWORD,
+  DEMO_INVITE_CODE,
+} from "../../config";
 
-export default function LoginScreen() {
-  const { login, demoLogin } = useAuth();
-  const [churchCode, setChurchCode] = useState(DEMO_CHURCH_CODE || "");
-  const [email, setEmail] = useState("");
+const LOGO_LOCAL = require("../../logo.jpg");
+
+export default function LoginScreen({ navigation }) {
+  const { login } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [churchCode, setChurchCode] = useState("");
+  const [emailOrPhone, setEmailOrPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
 
-  async function onLogin() {
-    try {
-      setBusy(true);
-      await login({ churchCode, email, password });
-    } catch (e) {
-      Alert.alert("Login failed", String(e?.message || e));
-    } finally {
-      setBusy(false);
-    }
+  function fillDemo() {
+    setChurchCode(DEMO_INVITE_CODE);
+    setEmailOrPhone(DEMO_ADMIN_EMAIL);
+    setPassword(DEMO_ADMIN_PASSWORD);
+    setError("");
   }
 
-  async function onDemo() {
+  async function onSubmit() {
+    setError("");
+    setLoading(true);
     try {
-      setBusy(true);
-      await demoLogin();
+      await login({ churchCode, emailOrPhone, password });
     } catch (e) {
-      Alert.alert("Demo failed", String(e?.message || e));
+      const msg = e?.message || "Something went wrong";
+      setError(msg);
+      Alert.alert("Login failed", msg);
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
   return (
-    <View style={styles.root}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Login</Text>
-        <Text style={styles.sub}>Email + Password (Firebase)</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: "#F5F7FB" }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
+        <View style={styles.card}>
+          <View style={styles.header}>
+            <Image source={LOGO_LOCAL} style={styles.logo} resizeMode="contain" />
+            <Text style={styles.appName}>Congregate</Text>
+            <Text style={styles.sub}>Welcome back! Enter your details to log in.</Text>
+          </View>
 
-        <TextInput
-          value={churchCode}
-          onChangeText={setChurchCode}
-          placeholder="Church Code (ex: HOLYAPPLE)"
-          autoCapitalize="characters"
-          style={styles.input}
-        />
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="Email"
-          autoCapitalize="none"
-          keyboardType="email-address"
-          style={styles.input}
-        />
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Password"
-          secureTextEntry
-          style={styles.input}
-        />
+          <Pressable onPress={fillDemo} style={styles.demoBtn}>
+            <Text style={styles.demoBtnText}>Use Apple Review Demo Login</Text>
+          </Pressable>
 
-        <Pressable style={styles.primary} onPress={onLogin} disabled={busy}>
-          <Text style={styles.primaryText}>{busy ? "Please wait..." : "Login"}</Text>
-        </Pressable>
+          <TextInput
+            value={churchCode}
+            onChangeText={setChurchCode}
+            placeholder="Church Code"
+            autoCapitalize="characters"
+            style={styles.input}
+          />
+          <TextInput
+            value={emailOrPhone}
+            onChangeText={setEmailOrPhone}
+            placeholder="Phone or Email"
+            autoCapitalize="none"
+            style={styles.input}
+          />
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Password"
+            secureTextEntry
+            style={styles.input}
+          />
 
-        <Pressable style={styles.demo} onPress={onDemo} disabled={busy}>
-          <Text style={styles.demoText}>{busy ? "Please wait..." : "Try Demo Mode (Apple)"}</Text>
-        </Pressable>
-      </View>
-    </View>
+          <View style={styles.demoBox}>
+            <Text style={styles.demoLabel}>Demo account</Text>
+            <Text style={styles.demoText}>Code: {DEMO_INVITE_CODE}</Text>
+            <Text style={styles.demoText}>Email: {DEMO_ADMIN_EMAIL}</Text>
+            <Text style={styles.demoText}>Password: {DEMO_ADMIN_PASSWORD}</Text>
+          </View>
+
+          {!!error && <Text style={styles.error}>{error}</Text>}
+
+          <Pressable onPress={onSubmit} disabled={loading} style={styles.btn}>
+            <Text style={styles.btnText}>{loading ? "Please wait..." : "Login"}</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={{ marginTop: 20, alignItems: "center" }}
+          >
+            <Text style={{ color: "#5B667A", fontWeight: "600" }}>
+              ← Back to Welcome Screen
+            </Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f4f6fb", padding: 16, justifyContent: "center" },
-  card: { backgroundColor: "white", borderRadius: 22, padding: 18, borderWidth: 1, borderColor: "rgba(15,23,42,0.10)" },
-  title: { fontSize: 22, fontWeight: "900", color: "#0f172a" },
-  sub: { marginTop: 6, color: "#586174", fontWeight: "700" },
-  input: { height: 48, borderRadius: 16, paddingHorizontal: 14, backgroundColor: "#F2F4F8", marginTop: 10, fontWeight: "800" },
-  primary: { marginTop: 14, height: 52, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "#0f172a" },
-  primaryText: { color: "white", fontWeight: "900" },
-  demo: { marginTop: 10, height: 48, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(37,99,235,0.12)", borderWidth: 1, borderColor: "rgba(37,99,235,0.25)" },
-  demoText: { color: "#2563eb", fontWeight: "900" },
+  wrap: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 18 },
+  card: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderRadius: 18,
+    padding: 18,
+  },
+  header: { alignItems: "center", marginBottom: 14 },
+  logo: { width: 86, height: 86, borderRadius: 18, marginBottom: 10 },
+  appName: { fontSize: 22, fontWeight: "800", color: "#0B1220" },
+  sub: { marginTop: 6, color: "#5B667A", fontWeight: "600", textAlign: "center" },
+  input: {
+    height: 48,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    backgroundColor: "#F2F4F8",
+    marginTop: 10,
+    fontWeight: "700",
+  },
+  btn: {
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "#0B1220",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 14,
+  },
+  btnText: { color: "white", fontWeight: "900", fontSize: 16 },
+  error: { marginTop: 10, color: "#B42318", fontWeight: "800", textAlign: "center" },
+  demoBtn: {
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#E8F0FE",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  demoBtnText: { color: "#1D4ED8", fontWeight: "900" },
+  demoBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  demoLabel: { fontWeight: "900", color: "#0F172A", marginBottom: 4 },
+  demoText: { color: "#334155", fontWeight: "700", fontSize: 12 },
 });
