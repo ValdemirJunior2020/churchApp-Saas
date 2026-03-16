@@ -1,19 +1,28 @@
-// App.js (REPLACE ENTIRE FILE)
-import React from "react";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+// src/App.js
 
-import AppNavigator from "./src/AppNavigator";
-import { AppDataProvider } from "./src/context/AppDataContext";
+import React from "react";
+import { SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { AuthProvider } from "./src/context/AuthContext";
+import AppNavigator from "./src/AppNavigator";
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AppDataProvider>
-        <AuthProvider>
+    <AuthProvider>
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.container}>
           <AppNavigator />
-        </AuthProvider>
-      </AppDataProvider>
-    </SafeAreaProvider>
+        </View>
+      </SafeAreaView>
+    </AuthProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  container: {
+    flex: 1,
+  },
+});

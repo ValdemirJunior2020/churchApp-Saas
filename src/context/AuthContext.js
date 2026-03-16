@@ -1,165 +1,256 @@
 // src/context/AuthContext.js
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Linking } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxUQo4wZqra7KnMinDMqwABjvJXUVXstvup3xLu9ENPg0HCxEU98xhaYm6-naUL-T8B/exec";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
+} from "firebase/firestore";
+import { auth, db } from "../firebase/firebaseConfig";
 
-const AuthContext = createContext({});
+const AuthContext = createContext(null);
+
+function makeChurchCode(churchName = "CHURCH") {
+  const clean = String(churchName)
+    .replace(/[^a-zA-Z0-9 ]/g, "")
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.slice(0, 3).toUpperCase())
+    .join("")
+    .slice(0, 8);
+
+  const random = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `${clean || "CHURCH"}-${random}`;
+}
 
 export function AuthProvider({ children }) {
+  const [firebaseUser, setFirebaseUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [tenant, setTenant] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load active session when the app starts
-  useEffect(() => {
-    loadSession();
-  }, []);
+  async function loadUserData(user) {
+    if (!user) {
+      setProfile(null);
+      setTenant(null);
+      return;
+    }
 
-  async function loadSession() {
-    try {
-      const stored = await AsyncStorage.getItem('@congregate_tenant');
-      if (stored) {
-        setTenant(JSON.parse(stored));
+    const userRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+      setProfile(null);
+      setTenant(null);
+      return;
+    }
+
+    const userData = userSnap.data();
+    setProfile(userData);
+
+    if (userData?.churchId) {
+      const churchRef = doc(db, "churches", userData.churchId);
+      const churchSnap = await getDoc(churchRef);
+
+      if (churchSnap.exists()) {
+        const churchData = churchSnap.data();
+        setTenant({
+          churchId: churchSnap.id,
+          churchName: churchData.churchName || "",
+          churchCode: churchData.churchCode || "",
+          role: userData.role || "MEMBER",
+          planStatus: churchData.planStatus || "ACTIVE",
+          trialEndsAt: churchData.trialEndsAt || null,
+          ...churchData,
+        });
+      } else {
+        setTenant(null);
       }
-    } catch (e) {
-      console.error("Failed to load session", e);
-    } finally {
-      setIsLoading(false);
+    } else {
+      setTenant(null);
     }
   }
 
-  async function saveSession(data) {
-    setTenant(data);
-    await AsyncStorage.setItem('@congregate_tenant', JSON.stringify(data));
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      try {
+        setIsLoading(true);
+        setFirebaseUser(user);
+        await loadUserData(user);
+      } catch (error) {
+        console.error("Auth load error:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    });
+
+    return unsub;
+  }, []);
+
+  async function createChurchAccount({
+    churchName,
+    email,
+    password,
+    fullName,
+    phone = "",
+  }) {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    const uid = cred.user.uid;
+
+    const churchRef = doc(collection(db, "churches"));
+    const churchCode = makeChurchCode(churchName);
+
+    await setDoc(churchRef, {
+      churchName: churchName || "",
+      churchCode,
+      pastorId: uid,
+      createdBy: uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      donationLinks: [],
+      announcementCount: 0,
+      memberCount: 1,
+      planStatus: "ACTIVE",
+    });
+
+    await setDoc(doc(db, "users", uid), {
+      uid,
+      fullName: fullName || "",
+      email,
+      phone,
+      role: "ADMIN",
+      churchId: churchRef.id,
+      churchCode,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    await setDoc(doc(db, "churches", churchRef.id, "members", uid), {
+      uid,
+      fullName: fullName || "",
+      email,
+      phone,
+      role: "ADMIN",
+      joinedAt: serverTimestamp(),
+      status: "ACTIVE",
+    });
+
+    await loadUserData(cred.user);
+    return { uid, churchId: churchRef.id, churchCode };
+  }
+
+  async function joinChurchAccount({
+    churchCode,
+    email,
+    password,
+    fullName,
+    phone = "",
+  }) {
+    const code = String(churchCode || "").trim().toUpperCase();
+
+    const churchesRef = collection(db, "churches");
+    const q = query(churchesRef, where("churchCode", "==", code));
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      throw new Error("Church Code not found.");
+    }
+
+    const churchDoc = snap.docs[0];
+    const churchId = churchDoc.id;
+
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    const uid = cred.user.uid;
+
+    await setDoc(doc(db, "users", uid), {
+      uid,
+      fullName: fullName || "",
+      email,
+      phone,
+      role: "MEMBER",
+      churchId,
+      churchCode: code,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    await setDoc(doc(db, "churches", churchId, "members", uid), {
+      uid,
+      fullName: fullName || "",
+      email,
+      phone,
+      role: "MEMBER",
+      joinedAt: serverTimestamp(),
+      status: "ACTIVE",
+    });
+
+    await loadUserData(cred.user);
+    return { uid, churchId };
+  }
+
+  async function login(email, password) {
+    if (email === "apple-tester@example.com" && password === "") {
+      // Hardcoded bypass for Apple App Review Demo Account
+      // In a real scenario, this would ideally be handled on the backend or 
+      // by setting a real password for the demo account in Firebase.
+      setTenant({
+        churchId: "TEST-001",
+        churchName: "Demo Church",
+        churchCode: "TEST-001",
+        role: "MEMBER",
+        planStatus: "ACTIVE",
+      });
+      setProfile({
+        uid: "demo-user-123",
+        fullName: "Apple Reviewer",
+        email: "apple-tester@example.com",
+        role: "MEMBER",
+        churchId: "TEST-001"
+      });
+      // We fake the user object so the rest of the app doesn't crash
+      const fakeUser = { uid: "demo-user-123", email: "apple-tester@example.com" };
+      setFirebaseUser(fakeUser);
+      return fakeUser;
+    }
+
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    await loadUserData(cred.user);
+    return cred.user;
   }
 
   async function logout() {
+    await signOut(auth);
+    setFirebaseUser(null);
+    setProfile(null);
     setTenant(null);
-    await AsyncStorage.removeItem('@congregate_tenant');
   }
 
-  // ==========================================
-  // 1. PASTOR CREATES A NEW CHURCH
-  // ==========================================
-  async function createChurchAndLogin({ churchName, pastorName, phone, email, password }) {
-    // Calls the Code.gs billingStart_ endpoint which automatically generates a unique churchCode
-    const response = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resource: "billing",
-        action: "start",
-        churchName: churchName,
-        adminName: pastorName,
-        adminEmail: email,
-        adminPhone: phone,
-        adminPassword: password, // Handled securely by your Code.gs hash function
-        plan: "PRO"
-      }),
-    });
-
-    const data = await response.json();
-    
-    if (!data.ok) {
-      throw new Error(data.error || "Failed to create church. Please try again.");
-    }
-
-    // Save to device storage. The app will detect planStatus: "PENDING"
-    // and route the Pastor to PaymentRequiredScreen
-    await saveSession({
-      inviteCode: data.churchCode, // The newly generated code!
-      churchName: churchName,
-      planStatus: "PENDING", 
-      sessionId: data.sessionId,
-      checkoutUrl: data.checkoutUrl,
-      role: "ADMIN",
-      email: email,
-      name: pastorName
-    });
-
-    // Automatically open the checkout URL so they can set up their PayPal subscription
-    if (data.checkoutUrl) {
-      Linking.openURL(data.checkoutUrl).catch(err => console.error("Couldn't open payment page", err));
-    }
-  }
-
-  // ==========================================
-  // 2. MEMBER JOINS AN EXISTING CHURCH
-  // ==========================================
-  async function joinChurchAndLogin({ inviteCode, name, phone, email, password }) {
-    const response = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resource: "auth", // Adjust this if your actual Google Script auth endpoint differs
-        action: "signup",
-        churchCode: inviteCode,
-        name: name,
-        email: email,
-        phone: phone,
-        password: password
-      }),
-    });
-
-    const data = await response.json();
-    
-    if (!data.ok) {
-      throw new Error(data.error || "Invalid Church Code or account already exists.");
-    }
-
-    await saveSession({
-      inviteCode: data.churchCode || inviteCode,
-      planStatus: data.planStatus || "ACTIVE", // Members inherit church's active status
-      role: "MEMBER",
-      email: email,
-      name: name
-    });
-  }
-
-  // ==========================================
-  // 3. RETURNING USER LOGS IN
-  // ==========================================
-  async function login({ churchCode, emailOrPhone, password }) {
-    const response = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resource: "auth", // Adjust this if your actual Google Script auth endpoint differs
-        action: "login",
-        churchCode: churchCode,
-        emailOrPhone: emailOrPhone,
-        password: password
-      }),
-    });
-
-    const data = await response.json();
-    
-    if (!data.ok) {
-      throw new Error(data.error || "Invalid login credentials. Check your Church Code and Password.");
-    }
-
-    await saveSession({
-      inviteCode: data.churchCode || churchCode,
-      planStatus: data.planStatus || "ACTIVE",
-      role: data.role || "MEMBER",
-      email: data.email || emailOrPhone,
-      churchName: data.churchName
-    });
-  }
-
-  return (
-    <AuthContext.Provider value={{
+  const value = useMemo(
+    () => ({
+      user: firebaseUser,
+      profile,
       tenant,
       isLoading,
+      createChurchAccount,
+      joinChurchAccount,
       login,
       logout,
-      createChurchAndLogin,
-      joinChurchAndLogin
-    }}>
-      {children}
-    </AuthContext.Provider>
+    }),
+    [firebaseUser, profile, tenant, isLoading]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

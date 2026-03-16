@@ -1,65 +1,164 @@
-// src/screens/auth/WelcomeScreen.js  (CREATE)
+// src/screens/auth/WelcomeScreen.js
+
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import AmbientBackground from "../../components/AmbientBackground";
+import GlassCard from "../../components/GlassCard";
+import { colors, radius, typography } from "../../theme";
 
 export default function WelcomeScreen({ navigation }) {
   return (
-    <View style={styles.root}>
-      <View style={styles.card}>
-        <Text style={styles.kicker}>CHURCH SaaS</Text>
-        <Text style={styles.title}>One app. Many churches.</Text>
-        <Text style={styles.sub}>
-          Pastors customize branding & giving. Members see the content.
-        </Text>
+    <AmbientBackground>
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.container}>
+          <View style={styles.hero}>
+            <View style={styles.badge}>
+              <Ionicons name="sparkles" size={14} color={colors.text} />
+              <Text style={styles.badgeText}>Ambient Church AI</Text>
+            </View>
 
-        <Pressable style={styles.primary} onPress={() => navigation.navigate("CreateChurch")}>
-          <Text style={styles.primaryText}>Create Church (Pastor)</Text>
-        </Pressable>
+            <Text style={styles.title}>One premium church app for pastors and members.</Text>
+            <Text style={styles.sub}>
+              Elegant dark design, live content, giving, events, and a modern experience that feels native on iPhone.
+            </Text>
+          </View>
 
-        <Pressable style={styles.secondary} onPress={() => navigation.navigate("JoinChurch")}>
-          <Text style={styles.secondaryText}>Join Church (Member)</Text>
-        </Pressable>
+          <GlassCard style={styles.card}>
+            <View style={styles.metricRow}>
+              <View style={styles.metric}>
+                <Text style={styles.metricValue}>AI</Text>
+                <Text style={styles.metricLabel}>Guided setup</Text>
+              </View>
+              <View style={styles.metric}>
+                <Text style={styles.metricValue}>24/7</Text>
+                <Text style={styles.metricLabel}>Member access</Text>
+              </View>
+              <View style={styles.metric}>
+                <Text style={styles.metricValue}>∞</Text>
+                <Text style={styles.metricLabel}>Scalable feel</Text>
+              </View>
+            </View>
 
-        <Pressable style={styles.link} onPress={() => navigation.navigate("Login")}>
-          <Text style={styles.linkText}>I already have an account → Login</Text>
-        </Pressable>
-      </View>
-    </View>
+            <Pressable style={styles.primaryWrap} onPress={() => navigation.navigate("JoinChurch")}>
+              <LinearGradient
+                colors={[colors.violet, colors.cyan, colors.magenta]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.primary}
+              >
+                <Ionicons name="enter-outline" size={18} color="#fff" />
+                <Text style={styles.primaryText}>Join Existing Church</Text>
+              </LinearGradient>
+            </Pressable>
+
+            <Pressable style={styles.ghost} onPress={() => navigation.navigate("Login")}>
+              <Text style={styles.ghostText}>I Already Have Access</Text>
+            </Pressable>
+          </GlassCard>
+        </View>
+      </SafeAreaView>
+    </AmbientBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f4f6fb", padding: 16, justifyContent: "center" },
+  safe: { flex: 1 },
+  container: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 22,
+    paddingBottom: 24,
+    justifyContent: "space-between",
+  },
+  hero: {
+    marginTop: 28,
+  },
+  badge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: colors.stroke,
+  },
+  badgeText: {
+    color: colors.text,
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  title: {
+    ...typography.h1,
+    marginTop: 20,
+    maxWidth: 330,
+  },
+  sub: {
+    ...typography.body,
+    marginTop: 14,
+    maxWidth: 330,
+  },
   card: {
-    backgroundColor: "rgba(255,255,255,0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.12)",
-    borderRadius: 26,
-    padding: 18,
+    marginBottom: 18,
   },
-  kicker: { fontSize: 11, letterSpacing: 2.5, color: "#64748b", fontWeight: "900" },
-  title: { marginTop: 8, fontSize: 22, fontWeight: "900", color: "#0f172a" },
-  sub: { marginTop: 8, color: "#586174", fontWeight: "700", lineHeight: 18 },
+  metricRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 18,
+  },
+  metric: {
+    flex: 1,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    padding: 14,
+  },
+  metricValue: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: "800",
+    letterSpacing: -0.7,
+  },
+  metricLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 6,
+  },
+  primaryWrap: {
+    overflow: "hidden",
+    borderRadius: radius.pill,
+  },
   primary: {
-    marginTop: 16,
-    height: 52,
-    borderRadius: 18,
+    minHeight: 56,
+    borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0f172a",
-  },
-  primaryText: { color: "white", fontWeight: "900" },
-  secondary: {
-    marginTop: 10,
-    height: 52,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(15,23,42,0.08)",
+    flexDirection: "row",
+    gap: 10,
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.12)",
+    borderColor: "rgba(255,255,255,0.18)",
   },
-  secondaryText: { color: "#0f172a", fontWeight: "900" },
-  link: { marginTop: 14, alignItems: "center" },
-  linkText: { color: "#2563eb", fontWeight: "900" },
+  primaryText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
+  ghost: {
+    marginTop: 12,
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ghostText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: "700",
+  },
 });
