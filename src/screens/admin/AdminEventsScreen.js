@@ -92,7 +92,7 @@ export default function AdminEventsScreen() {
     try {
       await upsertEvent(draft);
       setOpen(false);
-      Alert.alert("Saved ✅", "Event saved to Google Sheets.");
+      Alert.alert("Saved ✅", "Event saved locally for your church app.");
     } catch (err) {
       Alert.alert("Error", String(err?.message || err));
     }
@@ -119,9 +119,9 @@ export default function AdminEventsScreen() {
   async function onRefresh() {
     try {
       await refreshEvents();
-      Alert.alert("Updated", "Latest events loaded.");
+      Alert.alert("Updated", "Latest local events loaded.");
     } catch {
-      Alert.alert("Offline", "Could not reach Google Sheet right now.");
+      Alert.alert("Offline", "Could not refresh events right now.");
     }
   }
 
@@ -132,7 +132,7 @@ export default function AdminEventsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.kicker}>ADMIN</Text>
             <Text style={styles.title}>Events Manager</Text>
-            <Text style={styles.sub}>Create, edit, delete events (saved in Google Sheets).</Text>
+            <Text style={styles.sub}>Create, edit, and delete events for your church app.</Text>
           </View>
 
           <Pressable style={styles.iconBtn} onPress={onRefresh}>

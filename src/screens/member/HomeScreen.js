@@ -1,6 +1,6 @@
 // src/screens/member/HomeScreen.js
 
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Image,
@@ -11,13 +11,14 @@ import {
   Text,
   View,
 } from "react-native";
-import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
 import AmbientBackground from "../../components/AmbientBackground";
 import GlassCard from "../../components/GlassCard";
 import AIFab from "../../components/AIFab";
 import { useAppData } from "../../context/AppDataContext";
 import { colors, radius, typography } from "../../theme";
+import { buildYouTubeEmbedUrl } from "../../utils/youtube";
+import { safeImageSource } from "../../utils/media";
 
 const DEFAULT_VERSE = {
   title: "Verse of the Day",
@@ -28,8 +29,9 @@ const DEFAULT_VERSE = {
 export default function HomeScreen({ navigation }) {
   const { config, events } = useAppData();
   const churchName = config?.churchName || "Sanctuary";
-  const logoUrl = String(config?.logoUrl || "").trim();
-  const youtubeId = String(config?.youtubeVideoId || "").trim();
+  const logoSource = safeImageSource(config?.logoUrl || "");
+  const liveSource = config?.youtubeUrl || config?.youtubeVideoId || "";
+  const [logoFailed, setLogoFailed] = useState(false);
 
   const glow = useRef(new Animated.Value(0.6)).current;
 
@@ -42,12 +44,11 @@ export default function HomeScreen({ navigation }) {
     ).start();
   }, [glow]);
 
-  const embedUrl = useMemo(() => {
-    if (!youtubeId) return "";
-    return `https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1&playsinline=1`;
-  }, [youtubeId]);
+  const embedUrl = useMemo(() => buildYouTubeEmbedUrl(liveSource), [liveSource]);
 
-  const nextEvents = Array.isArray(events) ? events.slice(0, 2) : [];
+  const nextEvents = Array.isArray(events)
+    ? events.filter((event) => event?.isActive !== false).slice(0, 2)
+    : [];
 
   return (
     <AmbientBackground>
@@ -59,8 +60,8 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.title}>{churchName}</Text>
             </View>
 
-            {logoUrl ? (
-              <Image source={{ uri: logoUrl }} style={styles.logo} />
+            {logoSource && !logoFailed ? (
+              <Image source={logoSource} style={styles.logo} onError={() => setLogoFailed(true)} />
             ) : (
               <View style={styles.logoFallback}>
                 <Text style={styles.logoFallbackText}>{churchName.slice(0, 1).toUpperCase()}</Text>
@@ -71,30 +72,42 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.bento}>
             <GlassCard style={styles.heroCard}>
               <Animated.View style={[styles.aiGlow, { opacity: glow }]} />
-              <Text style={styles.cardKicker}>LIVE AI EXPERIENCE</Text>
+              <View style={styles.liveBadge}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveBadgeText}>{embedUrl ? "LIVE READY" : "SETUP NEEDED"}</Text>
+              </View>
+
               <Text style={styles.heroTitle}>Beautiful worship, smarter church connection.</Text>
               <Text style={styles.heroText}>
-                Members can watch, give, and stay in sync with everything happening in your church.
+                Members can watch, give, chat together, and stay in sync with everything happening in your church.
               </Text>
 
               <View style={styles.ctaRow}>
-                <Pressable style={styles.ghostButton} onPress={() => navigation.navigate("Giving")}>
-                  <Ionicons name="heart-outline" size={18} color={colors.text} />
-                  <Text style={styles.ghostButtonText}>Give</Text>
+                <Pressable style={styles.ghostButton} onPress={() => navigation.navigate("Live")}>
+                  <Ionicons name="radio-outline" size={18} color={colors.text} />
+                  <Text style={styles.ghostButtonText}>Live</Text>
                 </Pressable>
 
-                <Pressable style={styles.ghostButton} onPress={() => navigation.navigate("Events")}>
-                  <Ionicons name="calendar-outline" size={18} color={colors.text} />
-                  <Text style={styles.ghostButtonText}>Events</Text>
+                <Pressable style={styles.ghostButton} onPress={() => navigation.navigate("Chat")}>
+                  <Ionicons name="chatbubble-outline" size={18} color={colors.text} />
+                  <Text style={styles.ghostButtonText}>Chat</Text>
                 </Pressable>
               </View>
             </GlassCard>
 
-            <GlassCard style={styles.verseCard}>
-              <Text style={styles.cardKicker}>{DEFAULT_VERSE.title}</Text>
-              <Text style={styles.verseText}>{DEFAULT_VERSE.text}</Text>
-              <Text style={styles.verseRef}>{DEFAULT_VERSE.ref}</Text>
-            </GlassCard>
+            <View style={styles.bentoRow}>
+              <GlassCard style={styles.halfCard}>
+                <Text style={styles.cardKicker}>{DEFAULT_VERSE.title}</Text>
+                <Text style={styles.verseText}>{DEFAULT_VERSE.text}</Text>
+                <Text style={styles.verseRef}>{DEFAULT_VERSE.ref}</Text>
+              </GlassCard>
+
+              <GlassCard style={styles.halfCard}>
+                <Text style={styles.cardKicker}>COMMUNITY</Text>
+                <Text style={styles.counterValue}>{nextEvents.length}</Text>
+                <Text style={styles.heroText}>Upcoming moments ready for your church family.</Text>
+              </GlassCard>
+            </View>
 
             <GlassCard style={styles.eventsCard}>
               <Text style={styles.cardKicker}>UP NEXT</Text>
@@ -118,30 +131,18 @@ export default function HomeScreen({ navigation }) {
               )}
             </GlassCard>
 
-            <GlassCard style={styles.videoCard}>
-              <Text style={styles.cardKicker}>WATCH</Text>
-
-              {embedUrl ? (
-                <View style={styles.videoWrap}>
-                  <WebView
-                    source={{ uri: embedUrl }}
-                    style={{ flex: 1, backgroundColor: "transparent" }}
-                    javaScriptEnabled
-                    domStorageEnabled
-                    allowsFullscreenVideo
-                  />
-                </View>
-              ) : (
-                <View style={styles.videoPlaceholder}>
-                  <Ionicons name="play-circle-outline" size={42} color={colors.textMuted} />
-                  <Text style={styles.emptyText}>Pastor can add a YouTube Video ID in Admin Settings.</Text>
-                </View>
-              )}
+            <GlassCard style={styles.liveHintCard}>
+              <Text style={styles.cardKicker}>LIVE TAB</Text>
+              <Text style={styles.heroText}>
+                {embedUrl
+                  ? "Your church live stream is ready. Tap the Live tab below to watch inside the app."
+                  : "Pastor can add a YouTube Live URL in Settings to unlock the Live tab experience."}
+              </Text>
             </GlassCard>
           </View>
         </ScrollView>
 
-        <AIFab onPress={() => navigation.navigate("Events")} />
+        <AIFab onPress={() => navigation.navigate("Live")} />
       </SafeAreaView>
     </AmbientBackground>
   );
@@ -160,13 +161,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 18,
   },
-  kicker: {
-    ...typography.kicker,
-  },
-  title: {
-    ...typography.h2,
-    marginTop: 8,
-  },
+  kicker: { ...typography.kicker },
+  title: { ...typography.h2, marginTop: 8 },
   logo: {
     width: 58,
     height: 58,
@@ -188,12 +184,13 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "800",
   },
-  bento: {
+  bento: { gap: 14 },
+  bentoRow: {
+    flexDirection: "row",
     gap: 14,
   },
-  heroCard: {
-    minHeight: 220,
-  },
+  heroCard: { minHeight: 220 },
+  halfCard: { flex: 1 },
   aiGlow: {
     position: "absolute",
     top: -20,
@@ -203,19 +200,38 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "rgba(124,58,237,0.20)",
   },
-  cardKicker: {
-    ...typography.kicker,
-    color: colors.textSoft,
+  liveBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: colors.stroke,
   },
-  heroTitle: {
-    ...typography.h2,
-    marginTop: 10,
-    maxWidth: 260,
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: colors.success,
   },
-  heroText: {
-    ...typography.body,
+  liveBadgeText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+  },
+  cardKicker: { ...typography.kicker, color: colors.textSoft },
+  heroTitle: { ...typography.h2, marginTop: 14, maxWidth: 290 },
+  heroText: { ...typography.body, marginTop: 12 },
+  counterValue: {
+    color: colors.text,
+    fontSize: 32,
+    fontWeight: "900",
     marginTop: 12,
-    maxWidth: 300,
   },
   ctaRow: {
     flexDirection: "row",
@@ -234,74 +250,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  ghostButtonText: {
-    color: colors.text,
-    fontWeight: "700",
-  },
-  verseCard: {},
-  verseText: {
-    ...typography.h3,
-    marginTop: 10,
-    lineHeight: 26,
-  },
-  verseRef: {
-    ...typography.meta,
-    marginTop: 10,
-    color: colors.cyan,
-  },
+  ghostButtonText: { color: colors.text, fontWeight: "700" },
+  verseText: { ...typography.h3, marginTop: 10, lineHeight: 26 },
+  verseRef: { ...typography.meta, marginTop: 10, color: colors.cyan },
   eventsCard: {},
-  emptyText: {
-    ...typography.body,
-    marginTop: 12,
-  },
-  eventRow: {
-    flexDirection: "row",
-    gap: 10,
-    alignItems: "flex-start",
-    marginTop: 12,
-  },
-  eventSpacing: {
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.08)",
-  },
-  eventDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: colors.cyan,
-    marginTop: 6,
-  },
-  eventTitle: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  eventMeta: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 5,
-  },
-  videoCard: {},
-  videoWrap: {
-    height: 220,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  videoPlaceholder: {
-    minHeight: 190,
-    marginTop: 12,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.04)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 18,
-  },
+  liveHintCard: {},
+  emptyText: { ...typography.body, marginTop: 12 },
+  eventRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginTop: 14 },
+  eventSpacing: { paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.stroke },
+  eventDot: { width: 10, height: 10, borderRadius: 999, backgroundColor: colors.magenta, marginTop: 6 },
+  eventTitle: { color: colors.text, fontSize: 15, fontWeight: "800" },
+  eventMeta: { color: colors.textMuted, fontSize: 12, fontWeight: "600", marginTop: 4 },
 });

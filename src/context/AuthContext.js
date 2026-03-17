@@ -121,6 +121,12 @@ export function AuthProvider({ children }) {
       donationLinks: [],
       announcementCount: 0,
       memberCount: 1,
+      backgroundImageUrl: "",
+      logoUrl: "",
+      youtubeUrl: "",
+      youtubeVideoId: "",
+      themePrimaryHex: "#0F172A",
+      themeAccentHex: "#22D3EE",
       planStatus: "ACTIVE",
     });
 
@@ -200,30 +206,6 @@ export function AuthProvider({ children }) {
   }
 
   async function login(email, password) {
-    if (email === "apple-tester@example.com" && password === "") {
-      // Hardcoded bypass for Apple App Review Demo Account
-      // In a real scenario, this would ideally be handled on the backend or 
-      // by setting a real password for the demo account in Firebase.
-      setTenant({
-        churchId: "TEST-001",
-        churchName: "Demo Church",
-        churchCode: "TEST-001",
-        role: "MEMBER",
-        planStatus: "ACTIVE",
-      });
-      setProfile({
-        uid: "demo-user-123",
-        fullName: "Apple Reviewer",
-        email: "apple-tester@example.com",
-        role: "MEMBER",
-        churchId: "TEST-001"
-      });
-      // We fake the user object so the rest of the app doesn't crash
-      const fakeUser = { uid: "demo-user-123", email: "apple-tester@example.com" };
-      setFirebaseUser(fakeUser);
-      return fakeUser;
-    }
-
     const cred = await signInWithEmailAndPassword(auth, email, password);
     await loadUserData(cred.user);
     return cred.user;

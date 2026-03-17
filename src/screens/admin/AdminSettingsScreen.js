@@ -1,28 +1,43 @@
-// src/screens/admin/AdminSettingsScreen.js  (REPLACE)
-import React, { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+// src/screens/admin/AdminSettingsScreen.js
+
+import React, { useEffect, useMemo, useState } from "react";
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useAppData } from "../../context/AppDataContext";
 import { useAuth } from "../../context/AuthContext";
+import { extractYouTubeVideoId } from "../../utils/youtube";
+import { safeImageSource } from "../../utils/media";
 
 export default function AdminSettingsScreen() {
   const { tenant } = useAuth();
   const { config, donations, saveConfig, addDonation, removeDonation, refreshChurchData } = useAppData();
 
-  const [churchName, setChurchName] = useState(config?.churchName || "");
-  const [address, setAddress] = useState(config?.address || "");
-  const [logoUrl, setLogoUrl] = useState(config?.logoUrl || "");
-  const [youtubeVideoId, setYoutubeVideoId] = useState(config?.youtubeVideoId || "");
-  const [primaryHex, setPrimaryHex] = useState(config?.themePrimaryHex || "#0F172A");
-  const [accentHex, setAccentHex] = useState(config?.themeAccentHex || "#2563EB");
+  const [churchName, setChurchName] = useState("");
+  const [address, setAddress] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [primaryHex, setPrimaryHex] = useState("#0F172A");
+  const [accentHex, setAccentHex] = useState("#22D3EE");
 
   const [donLabel, setDonLabel] = useState("");
   const [donUrl, setDonUrl] = useState("");
   const [donProvider, setDonProvider] = useState("PAYPAL");
+  const [logoFailed, setLogoFailed] = useState(false);
 
-  const churchCode = tenant?.inviteCode || "";
-  const planStatus = tenant?.planStatus || "";
+  useEffect(() => {
+    setChurchName(config?.churchName || "");
+    setAddress(config?.address || "");
+    setLogoUrl(config?.logoUrl || "");
+    setBackgroundImageUrl(config?.backgroundImageUrl || "");
+    setYoutubeUrl(config?.youtubeUrl || config?.youtubeVideoId || "");
+    setPrimaryHex(config?.themePrimaryHex || "#0F172A");
+    setAccentHex(config?.themeAccentHex || "#22D3EE");
+    setLogoFailed(false);
+  }, [config]);
 
   const liveDonations = useMemo(() => (Array.isArray(donations) ? donations : []), [donations]);
+  const liveVideoId = extractYouTubeVideoId(youtubeUrl);
+  const logoSource = safeImageSource(logoUrl);
 
   async function onSave() {
     try {
@@ -30,11 +45,13 @@ export default function AdminSettingsScreen() {
         churchName,
         address,
         logoUrl,
-        youtubeVideoId,
+        backgroundImageUrl,
+        youtubeUrl,
+        youtubeVideoId: liveVideoId,
         themePrimaryHex: primaryHex,
         themeAccentHex: accentHex,
       });
-      Alert.alert("Saved", "Settings updated in Google Sheet.");
+      Alert.alert("Saved", "Settings synced to Firebase. Your Live tab and church branding are ready.");
     } catch (e) {
       Alert.alert("Error", String(e?.message || e));
     }
@@ -46,7 +63,7 @@ export default function AdminSettingsScreen() {
         Alert.alert("Missing", "Enter label and URL.");
         return;
       }
-      await addDonation({ label: donLabel.trim(), url: donUrl.trim(), provider: donProvider });
+      await addDonation({ label: donLabel.trim(), url: donUrl.trim(), provider: donProvider.trim() || "LINK" });
       setDonLabel("");
       setDonUrl("");
       setDonProvider("PAYPAL");
@@ -59,6 +76,7 @@ export default function AdminSettingsScreen() {
   async function onRemoveDonation(id) {
     try {
       await removeDonation(id);
+      Alert.alert("Removed", "Donation button removed.");
     } catch (e) {
       Alert.alert("Error", String(e?.message || e));
     }
@@ -67,197 +85,156 @@ export default function AdminSettingsScreen() {
   async function onRefresh() {
     try {
       await refreshChurchData();
-    } catch (e) {
-      Alert.alert("Error", String(e?.message || e));
+      Alert.alert("Updated", "Latest church data loaded.");
+    } catch {
+      Alert.alert("Offline", "Could not refresh right now.");
     }
   }
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.container}>
-      <View style={styles.card}>
+      <View style={styles.heroCard}>
         <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.kicker}>PASTOR SETTINGS</Text>
-            <Text style={styles.title}>Branding & Giving</Text>
-            <Text style={styles.sub}>These save directly into your Google Sheet.</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.kicker}>ADMIN</Text>
+            <Text style={styles.title}>Church Settings</Text>
+            <Text style={styles.sub}>Glassmorphism branding, live stream setup, background art, and giving links.</Text>
           </View>
+
           <Pressable style={styles.refreshBtn} onPress={onRefresh}>
             <Text style={styles.refreshText}>Refresh</Text>
           </Pressable>
         </View>
 
-        <View style={styles.chipRow}>
-          <View style={styles.chip}>
-            <Text style={styles.chipLabel}>Church Code</Text>
-            <Text style={styles.chipValue}>{churchCode || "-"}</Text>
-          </View>
-          <View style={styles.chip}>
-            <Text style={styles.chipLabel}>Plan</Text>
-            <Text style={styles.chipValue}>{planStatus || "-"}</Text>
-          </View>
+        <Text style={styles.meta}>Church Code: {tenant?.churchCode || "-"}</Text>
+
+        {!!logoSource && !logoFailed ? (
+          <Image source={logoSource} style={styles.previewLogo} onError={() => setLogoFailed(true)} />
+        ) : null}
+
+        <TextInput style={styles.input} value={churchName} onChangeText={setChurchName} placeholder="Church name" placeholderTextColor="#7c8598" />
+        <TextInput style={styles.input} value={address} onChangeText={setAddress} placeholder="Address" placeholderTextColor="#7c8598" />
+        <TextInput style={styles.input} value={logoUrl} onChangeText={setLogoUrl} placeholder="Logo URL (.png .jpg .jpeg .webp .svg .gif)" placeholderTextColor="#7c8598" autoCapitalize="none" />
+        <TextInput style={styles.input} value={backgroundImageUrl} onChangeText={setBackgroundImageUrl} placeholder="Optional background image URL" placeholderTextColor="#7c8598" autoCapitalize="none" />
+        <TextInput style={styles.input} value={youtubeUrl} onChangeText={setYoutubeUrl} placeholder="YouTube live URL or video ID" placeholderTextColor="#7c8598" autoCapitalize="none" />
+
+        <View style={styles.row}>
+          <TextInput style={[styles.input, styles.half]} value={primaryHex} onChangeText={setPrimaryHex} placeholder="Primary hex" placeholderTextColor="#7c8598" autoCapitalize="none" />
+          <TextInput style={[styles.input, styles.half]} value={accentHex} onChangeText={setAccentHex} placeholder="Accent hex" placeholderTextColor="#7c8598" autoCapitalize="none" />
         </View>
 
-        <Text style={styles.label}>Church Name</Text>
-        <TextInput value={churchName} onChangeText={setChurchName} style={styles.input} placeholder="SANCTUARY" />
+        <Pressable style={styles.saveBtn} onPress={onSave}>
+          <Text style={styles.saveText}>Save Church Settings</Text>
+        </Pressable>
+      </View>
 
-        <Text style={styles.label}>Address</Text>
-        <TextInput value={address} onChangeText={setAddress} style={styles.input} placeholder="Street, City, State" />
-
-        <Text style={styles.label}>Logo URL</Text>
-        <TextInput value={logoUrl} onChangeText={setLogoUrl} style={styles.input} placeholder="https://..." autoCapitalize="none" />
-
-        <Text style={styles.label}>YouTube Video ID</Text>
-        <TextInput value={youtubeVideoId} onChangeText={setYoutubeVideoId} style={styles.input} placeholder="dQw4w9WgXcQ" autoCapitalize="none" />
-
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Theme Primary</Text>
-            <TextInput value={primaryHex} onChangeText={setPrimaryHex} style={styles.input} placeholder="#0F172A" autoCapitalize="characters" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Theme Accent</Text>
-            <TextInput value={accentHex} onChangeText={setAccentHex} style={styles.input} placeholder="#2563EB" autoCapitalize="characters" />
-          </View>
-        </View>
-
-        <View style={styles.divider} />
-
-        <Text style={styles.label}>Donation Buttons</Text>
-
-        <View style={styles.donRow}>
-          <TextInput value={donLabel} onChangeText={setDonLabel} style={[styles.input, { flex: 1 }]} placeholder="Label (PayPal / Cash App)" />
-          <TextInput value={donProvider} onChangeText={setDonProvider} style={[styles.input, { width: 110 }]} placeholder="PAYPAL" autoCapitalize="characters" />
-        </View>
-
-        <TextInput value={donUrl} onChangeText={setDonUrl} style={styles.input} placeholder="https://..." autoCapitalize="none" />
-
-        <Pressable style={styles.softBtn} onPress={onAddDonation}>
-          <Text style={styles.softBtnText}>+ Add Donation Button</Text>
+      <View style={styles.heroCard}>
+        <Text style={styles.sectionTitle}>Donation Buttons</Text>
+        <TextInput style={styles.input} value={donLabel} onChangeText={setDonLabel} placeholder="Button label" placeholderTextColor="#7c8598" />
+        <TextInput style={styles.input} value={donUrl} onChangeText={setDonUrl} placeholder="Donation URL" placeholderTextColor="#7c8598" autoCapitalize="none" />
+        <TextInput style={styles.input} value={donProvider} onChangeText={setDonProvider} placeholder="Provider" placeholderTextColor="#7c8598" />
+        <Pressable style={styles.addBtn} onPress={onAddDonation}>
+          <Text style={styles.saveText}>Add Donation Link</Text>
         </Pressable>
 
-        {liveDonations.length === 0 ? (
-          <Text style={styles.empty}>No donation links yet.</Text>
-        ) : (
-          <View style={{ marginTop: 10, gap: 10 }}>
-            {liveDonations.map((d) => (
-              <View key={d.donationId} style={styles.itemRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.itemTitle}>{d.label}</Text>
-                  <Text style={styles.itemSub} numberOfLines={1}>
-                    {d.url}
-                  </Text>
-                </View>
-                <Pressable style={styles.delBtn} onPress={() => onRemoveDonation(d.donationId)}>
-                  <Text style={styles.delText}>Delete</Text>
-                </Pressable>
+        <View style={{ gap: 10, marginTop: 14 }}>
+          {liveDonations.map((item) => (
+            <View key={item.donationId} style={styles.listRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.listTitle}>{item.label}</Text>
+                <Text style={styles.listSub}>{item.url}</Text>
               </View>
-            ))}
-          </View>
-        )}
-
-        <Pressable style={styles.primary} onPress={onSave}>
-          <Text style={styles.primaryText}>Save Settings</Text>
-        </Pressable>
+              <Pressable style={styles.removeBtn} onPress={() => onRemoveDonation(item.donationId)}>
+                <Text style={styles.removeText}>Remove</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f4f6fb" },
-  container: { padding: 16, paddingBottom: 28 },
-  card: {
-    backgroundColor: "rgba(255,255,255,0.85)",
+  root: { flex: 1, backgroundColor: "#eef2ff" },
+  container: { padding: 16, paddingBottom: 28, gap: 16 },
+  heroCard: {
+    backgroundColor: "rgba(255,255,255,0.82)",
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.12)",
-    borderRadius: 26,
+    borderColor: "rgba(15,23,42,0.10)",
+    borderRadius: 24,
     padding: 16,
   },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  kicker: { fontSize: 11, letterSpacing: 2.5, color: "#64748b", fontWeight: "900" },
-  title: { marginTop: 6, fontSize: 22, fontWeight: "900", color: "#0f172a" },
-  sub: { marginTop: 6, fontSize: 13, color: "#586174", fontWeight: "700" },
-  refreshBtn: {
-    paddingHorizontal: 12,
-    height: 36,
-    borderRadius: 14,
-    backgroundColor: "rgba(15,23,42,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  kicker: { color: "#475569", fontSize: 11, fontWeight: "800", letterSpacing: 2 },
+  title: { color: "#0f172a", fontSize: 28, fontWeight: "900", marginTop: 6 },
+  sub: { color: "#475569", fontSize: 14, lineHeight: 20, fontWeight: "600", marginTop: 8 },
+  meta: { color: "#0f172a", fontSize: 13, fontWeight: "700", marginTop: 12 },
+  previewLogo: {
+    width: 76,
+    height: 76,
+    borderRadius: 22,
+    marginTop: 14,
+    backgroundColor: "#fff",
   },
-  refreshText: { color: "#0f172a", fontWeight: "900" },
-  chipRow: { flexDirection: "row", gap: 10, marginTop: 12 },
-  chip: {
-    flex: 1,
-    borderRadius: 18,
-    padding: 12,
-    backgroundColor: "rgba(15,23,42,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
-  },
-  chipLabel: { color: "#64748b", fontWeight: "900", fontSize: 12 },
-  chipValue: { marginTop: 4, color: "#0f172a", fontWeight: "900" },
-
-  label: { marginTop: 12, color: "#0f172a", fontWeight: "900" },
   input: {
-    marginTop: 8,
-    height: 46,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    backgroundColor: "rgba(15,23,42,0.06)",
+    minHeight: 52,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: "rgba(15,23,42,0.10)",
+    backgroundColor: "rgba(255,255,255,0.78)",
     color: "#0f172a",
-    fontWeight: "800",
+    paddingHorizontal: 14,
+    marginTop: 12,
   },
-  divider: { height: 1, backgroundColor: "rgba(15,23,42,0.10)", marginTop: 16 },
-  donRow: { flexDirection: "row", gap: 10, marginTop: 8 },
-  softBtn: {
-    marginTop: 10,
-    height: 44,
+  row: { flexDirection: "row", gap: 10 },
+  half: { flex: 1 },
+  refreshBtn: {
+    minHeight: 42,
+    paddingHorizontal: 16,
     borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(15,23,42,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.12)",
-  },
-  softBtnText: { color: "#0f172a", fontWeight: "900" },
-  empty: { marginTop: 10, color: "#64748b", fontWeight: "800" },
-
-  itemRow: {
-    flexDirection: "row",
-    gap: 10,
-    padding: 12,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
-    alignItems: "center",
-  },
-  itemTitle: { fontWeight: "900", color: "#0f172a" },
-  itemSub: { marginTop: 2, color: "#64748b", fontWeight: "800" },
-  delBtn: {
-    height: 36,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: "rgba(239,68,68,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.22)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  delText: { color: "#b91c1c", fontWeight: "900" },
-
-  primary: {
-    marginTop: 16,
-    height: 54,
-    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0f172a",
   },
-  primaryText: { color: "white", fontWeight: "900" },
+  refreshText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  saveBtn: {
+    minHeight: 54,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0f172a",
+    marginTop: 14,
+  },
+  addBtn: {
+    minHeight: 54,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1d4ed8",
+    marginTop: 14,
+  },
+  saveText: { color: "#fff", fontWeight: "800", fontSize: 15 },
+  sectionTitle: { color: "#0f172a", fontSize: 18, fontWeight: "900" },
+  listRow: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.75)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.08)",
+  },
+  listTitle: { color: "#0f172a", fontSize: 14, fontWeight: "800" },
+  listSub: { color: "#475569", fontSize: 12, fontWeight: "600", marginTop: 4 },
+  removeBtn: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fee2e2",
+  },
+  removeText: { color: "#991b1b", fontWeight: "800", fontSize: 13 },
 });

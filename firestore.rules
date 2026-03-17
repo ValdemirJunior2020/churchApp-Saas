@@ -1,5 +1,3 @@
-// firestore.rules
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -37,9 +35,22 @@ service cloud.firestore {
 
       match /members/{memberId} {
         allow read: if sameChurch(churchId);
-        allow create: if signedIn() && request.auth.uid == memberId;
+        allow create: if signedIn() && (request.auth.uid == memberId || isAdmin(churchId));
         allow update: if isAdmin(churchId);
         allow delete: if isAdmin(churchId);
+      }
+
+      match /events/{eventId} {
+        allow read: if sameChurch(churchId);
+        allow create, update, delete: if isAdmin(churchId);
+      }
+
+      match /chatMessages/{messageId} {
+        allow read: if sameChurch(churchId);
+        allow create: if sameChurch(churchId)
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.churchId == churchId;
+        allow update, delete: if false;
       }
 
       match /announcements/{announcementId} {

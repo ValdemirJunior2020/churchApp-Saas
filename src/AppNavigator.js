@@ -11,15 +11,20 @@ import { useAuth } from "./context/AuthContext";
 import { useAppData } from "./context/AppDataContext";
 
 import WelcomeScreen from "./screens/auth/WelcomeScreen";
+import CreateChurchScreen from "./screens/auth/CreateChurchScreen";
 import JoinChurchScreen from "./screens/auth/JoinChurchScreen";
 import LoginScreen from "./screens/auth/LoginScreen";
 import PaymentRequiredScreen from "./screens/auth/PaymentRequiredScreen";
 
 import HomeScreen from "./screens/member/HomeScreen";
+import LiveScreen from "./screens/member/LiveScreen";
 import GivingScreen from "./screens/member/GivingScreen";
 import EventsScreen from "./screens/member/EventsScreen";
+import ChatScreen from "./screens/member/ChatScreen";
 
+import AdminDashboardScreen from "./screens/admin/AdminDashboardScreen";
 import AdminSettingsScreen from "./screens/admin/AdminSettingsScreen";
+import AdminEventsScreen from "./screens/admin/AdminEventsScreen";
 import MemberManagerScreen from "./screens/admin/MemberManagerScreen";
 
 import { colors } from "./theme";
@@ -59,6 +64,7 @@ function AuthStack() {
       }}
     >
       <Stack.Screen name="Welcome" component={WelcomeScreen} />
+      <Stack.Screen name="CreateChurch" component={CreateChurchScreen} />
       <Stack.Screen name="JoinChurch" component={JoinChurchScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="PaymentRequired" component={PaymentRequiredScreen} />
@@ -68,7 +74,9 @@ function AuthStack() {
 
 function memberIcon(routeName, focused) {
   if (routeName === "Home") return focused ? "home" : "home-outline";
+  if (routeName === "Live") return focused ? "radio" : "radio-outline";
   if (routeName === "Events") return focused ? "calendar" : "calendar-outline";
+  if (routeName === "Chat") return focused ? "chatbubble" : "chatbubble-outline";
   return focused ? "heart" : "heart-outline";
 }
 
@@ -87,10 +95,20 @@ function MemberTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Live" component={LiveScreen} />
       <Tab.Screen name="Events" component={EventsScreen} />
+      <Tab.Screen name="Chat" component={ChatScreen} />
       <Tab.Screen name="Giving" component={GivingScreen} />
     </Tab.Navigator>
   );
+}
+
+function adminIcon(routeName, focused) {
+  if (routeName === "Dashboard") return focused ? "grid" : "grid-outline";
+  if (routeName === "Settings") return focused ? "settings" : "settings-outline";
+  if (routeName === "Events") return focused ? "calendar" : "calendar-outline";
+  if (routeName === "Chat") return focused ? "chatbubble" : "chatbubble-outline";
+  return focused ? "people" : "people-outline";
 }
 
 function AdminTabs() {
@@ -103,24 +121,15 @@ function AdminTabs() {
         tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: styles.tabLabel,
         tabBarIcon: ({ color, focused, size }) => (
-          <Ionicons
-            name={
-              route.name === "Admin Dashboard"
-                ? focused
-                  ? "grid"
-                  : "grid-outline"
-                : focused
-                ? "people"
-                : "people-outline"
-            }
-            size={size}
-            color={color}
-          />
+          <Ionicons name={adminIcon(route.name, focused)} size={size} color={color} />
         ),
       })}
     >
-      <Tab.Screen name="Admin Dashboard" component={AdminSettingsScreen} />
+      <Tab.Screen name="Dashboard" component={AdminDashboardScreen} />
+      <Tab.Screen name="Settings" component={AdminSettingsScreen} />
+      <Tab.Screen name="Events" component={AdminEventsScreen} />
       <Tab.Screen name="Members" component={MemberManagerScreen} />
+      <Tab.Screen name="Chat" component={ChatScreen} />
     </Tab.Navigator>
   );
 }
@@ -163,10 +172,10 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     position: "absolute",
-    left: 14,
-    right: 14,
-    bottom: 12,
-    height: 70,
+    left: 10,
+    right: 10,
+    bottom: 10,
+    height: 72,
     paddingTop: 8,
     paddingBottom: 10,
     backgroundColor: "rgba(10,10,12,0.92)",

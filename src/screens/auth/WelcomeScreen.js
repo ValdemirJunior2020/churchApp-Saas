@@ -21,15 +21,15 @@ export default function WelcomeScreen({ navigation }) {
 
             <Text style={styles.title}>One premium church app for pastors and members.</Text>
             <Text style={styles.sub}>
-              Elegant dark design, live content, giving, events, and a modern experience that feels native on iPhone.
+              Elegant glassmorphism, live stream viewing, giving, events, and a modern iPhone-first church experience.
             </Text>
           </View>
 
           <GlassCard style={styles.card}>
             <View style={styles.metricRow}>
               <View style={styles.metric}>
-                <Text style={styles.metricValue}>AI</Text>
-                <Text style={styles.metricLabel}>Guided setup</Text>
+                <Text style={styles.metricValue}>LIVE</Text>
+                <Text style={styles.metricLabel}>YouTube inside app</Text>
               </View>
               <View style={styles.metric}>
                 <Text style={styles.metricValue}>24/7</Text>
@@ -41,16 +41,23 @@ export default function WelcomeScreen({ navigation }) {
               </View>
             </View>
 
-            <Pressable style={styles.primaryWrap} onPress={() => navigation.navigate("JoinChurch")}>
+            <Pressable style={styles.primaryWrap} onPress={() => navigation.navigate("CreateChurch")}>
               <LinearGradient
                 colors={[colors.violet, colors.cyan, colors.magenta]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.primary}
               >
-                <Ionicons name="enter-outline" size={18} color="#fff" />
-                <Text style={styles.primaryText}>Join Existing Church</Text>
+                <Ionicons name="sparkles-outline" size={18} color="#fff" />
+                <Text style={styles.primaryText}>Create My Church</Text>
               </LinearGradient>
+            </Pressable>
+
+            <Pressable style={styles.secondaryWrap} onPress={() => navigation.navigate("JoinChurch")}>
+              <View style={styles.secondary}>
+                <Ionicons name="enter-outline" size={18} color={colors.text} />
+                <Text style={styles.secondaryText}>Join Existing Church</Text>
+              </View>
             </Pressable>
 
             <Pressable style={styles.ghost} onPress={() => navigation.navigate("Login")}>
@@ -149,6 +156,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800",
     letterSpacing: -0.2,
+  },
+  secondaryWrap: {
+    marginTop: 12,
+  },
+  secondary: {
+    minHeight: 54,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.strokeStrong,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 10,
+  },
+  secondaryText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "800",
   },
   ghost: {
     marginTop: 12,
