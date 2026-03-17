@@ -1,4 +1,4 @@
-// App.js
+// File: App.js
 
 import React from "react";
 import { SafeAreaView, StyleSheet, View } from "react-native";
@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider } from "./src/context/AuthContext";
 import { AppDataProvider } from "./src/context/AppDataContext";
+import { PurchasesProvider } from "./src/context/PurchasesContext";
 import AppNavigator from "./src/AppNavigator";
 
 export default function App() {
@@ -13,12 +14,14 @@ export default function App() {
     <GestureHandlerRootView style={styles.root}>
       <AuthProvider>
         <AppDataProvider>
-          <SafeAreaView style={styles.safe}>
-            <StatusBar style="light" />
-            <View style={styles.container}>
-              <AppNavigator />
-            </View>
-          </SafeAreaView>
+          <PurchasesProvider>
+            <SafeAreaView style={styles.safe}>
+              <StatusBar style="light" />
+              <View style={styles.container}>
+                <AppNavigator />
+              </View>
+            </SafeAreaView>
+          </PurchasesProvider>
         </AppDataProvider>
       </AuthProvider>
     </GestureHandlerRootView>

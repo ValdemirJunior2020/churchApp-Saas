@@ -1,4 +1,4 @@
-// src/config.js
+// File: src/config.js
 
 export const GAS_URL =
   "https://script.google.com/macros/s/AKfycbxUQo4wZqra7KnMinDMqwABjvJXUVXstvup3xLu9ENPg0HCxEU98xhaYm6-naUL-T8B/exec";

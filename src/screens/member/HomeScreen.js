@@ -1,6 +1,6 @@
-// src/screens/member/HomeScreen.js
+// File: src/screens/member/HomeScreen.js
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useContext } from "react";
 import {
   Animated,
   Image,
@@ -10,12 +10,20 @@ import {
   StyleSheet,
   Text,
   View,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AmbientBackground from "../../components/AmbientBackground";
 import GlassCard from "../../components/GlassCard";
 import AIFab from "../../components/AIFab";
+import PremiumScreen from "../premium/PremiumScreen";
+import usePremiumTrigger from "../../hooks/usePremiumTrigger";
+import useDemoMode from "../../hooks/useDemoMode";
+
 import { useAppData } from "../../context/AppDataContext";
+import { useAuth } from "../../context/AuthContext";
+import { PurchasesContext } from "../../context/PurchasesContext";
+
 import { colors, radius, typography } from "../../theme";
 import { buildYouTubeEmbedUrl } from "../../utils/youtube";
 import { safeImageSource } from "../../utils/media";
@@ -28,12 +36,38 @@ const DEFAULT_VERSE = {
 
 export default function HomeScreen({ navigation }) {
   const { config, events } = useAppData();
+  const { tenant } = useAuth();
+  const { isPro } = useContext(PurchasesContext);
+
+  const { demo, toggleDemo } = useDemoMode();
+
+  const isAdmin = tenant?.role === "ADMIN";
+
+  const { showPremium, setShowPremium } = usePremiumTrigger(
+    isAdmin,
+    isPro
+  );
+
   const churchName = config?.churchName || "Sanctuary";
   const logoSource = safeImageSource(config?.logoUrl || "");
   const liveSource = config?.youtubeUrl || config?.youtubeVideoId || "";
   const [logoFailed, setLogoFailed] = useState(false);
 
   const glow = useRef(new Animated.Value(0.6)).current;
+
+  // 🔥 DEMO MODE SECRET TAP
+  const [tapCount, setTapCount] = useState(0);
+
+  const handleSecretTap = () => {
+    const newCount = tapCount + 1;
+    setTapCount(newCount);
+
+    if (newCount >= 10) {
+      toggleDemo();
+      Alert.alert("Demo Mode Activated ✅");
+      setTapCount(0);
+    }
+  };
 
   useEffect(() => {
     Animated.loop(
@@ -60,24 +94,49 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.title}>{churchName}</Text>
             </View>
 
+            {/* 🔥 LOGO WITH DEMO TAP */}
             {logoSource && !logoFailed ? (
-              <Image source={logoSource} style={styles.logo} onError={() => setLogoFailed(true)} />
+              <Pressable onPress={handleSecretTap}>
+                <Image source={logoSource} style={styles.logo} onError={() => setLogoFailed(true)} />
+              </Pressable>
             ) : (
-              <View style={styles.logoFallback}>
-                <Text style={styles.logoFallbackText}>{churchName.slice(0, 1).toUpperCase()}</Text>
-              </View>
+              <Pressable onPress={handleSecretTap}>
+                <View style={styles.logoFallback}>
+                  <Text style={styles.logoFallbackText}>
+                    {churchName.slice(0, 1).toUpperCase()}
+                  </Text>
+                </View>
+              </Pressable>
             )}
           </View>
+
+          {/* 🔥 ADMIN UPGRADE CARD */}
+          {isAdmin && !isPro && (
+            <GlassCard style={styles.upgradeCard}>
+              <Text style={styles.upgradeTitle}>Unlock Church Pro 🚀</Text>
+              <Text style={styles.upgradeText}>
+                Start your 7-day free trial to enable live streaming, member management, and more.
+              </Text>
+
+              <Pressable style={styles.upgradeButton} onPress={() => setShowPremium(true)}>
+                <Text style={styles.upgradeButtonText}>Start Free Trial</Text>
+              </Pressable>
+            </GlassCard>
+          )}
 
           <View style={styles.bento}>
             <GlassCard style={styles.heroCard}>
               <Animated.View style={[styles.aiGlow, { opacity: glow }]} />
               <View style={styles.liveBadge}>
                 <View style={styles.liveDot} />
-                <Text style={styles.liveBadgeText}>{embedUrl ? "LIVE READY" : "SETUP NEEDED"}</Text>
+                <Text style={styles.liveBadgeText}>
+                  {embedUrl ? "LIVE READY" : "SETUP NEEDED"}
+                </Text>
               </View>
 
-              <Text style={styles.heroTitle}>Beautiful worship, smarter church connection.</Text>
+              <Text style={styles.heroTitle}>
+                Beautiful worship, smarter church connection.
+              </Text>
               <Text style={styles.heroText}>
                 Members can watch, give, chat together, and stay in sync with everything happening in your church.
               </Text>
@@ -105,7 +164,9 @@ export default function HomeScreen({ navigation }) {
               <GlassCard style={styles.halfCard}>
                 <Text style={styles.cardKicker}>COMMUNITY</Text>
                 <Text style={styles.counterValue}>{nextEvents.length}</Text>
-                <Text style={styles.heroText}>Upcoming moments ready for your church family.</Text>
+                <Text style={styles.heroText}>
+                  Upcoming moments ready for your church family.
+                </Text>
               </GlassCard>
             </View>
 
@@ -123,7 +184,9 @@ export default function HomeScreen({ navigation }) {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.eventTitle}>{event.title || "Church Event"}</Text>
                       <Text style={styles.eventMeta}>
-                        {event.dateTimeISO ? new Date(event.dateTimeISO).toLocaleString() : "Coming soon"}
+                        {event.dateTimeISO
+                          ? new Date(event.dateTimeISO).toLocaleString()
+                          : "Coming soon"}
                       </Text>
                     </View>
                   </View>
@@ -143,6 +206,11 @@ export default function HomeScreen({ navigation }) {
         </ScrollView>
 
         <AIFab onPress={() => navigation.navigate("Live")} />
+
+        <PremiumScreen
+          visible={showPremium}
+          onClose={() => setShowPremium(false)}
+        />
       </SafeAreaView>
     </AmbientBackground>
   );
@@ -184,6 +252,32 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "800",
   },
+
+  upgradeCard: {
+    marginBottom: 14,
+    borderColor: "rgba(0,229,255,0.3)",
+  },
+  upgradeTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  upgradeText: {
+    color: colors.textSoft,
+    marginTop: 6,
+  },
+  upgradeButton: {
+    marginTop: 12,
+    backgroundColor: colors.cyan,
+    paddingVertical: 12,
+    borderRadius: 16,
+    alignItems: "center",
+  },
+  upgradeButtonText: {
+    color: "#000",
+    fontWeight: "800",
+  },
+
   bento: { gap: 14 },
   bentoRow: {
     flexDirection: "row",

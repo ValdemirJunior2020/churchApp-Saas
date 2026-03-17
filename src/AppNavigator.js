@@ -1,6 +1,6 @@
-// src/AppNavigator.js
+// File: src/AppNavigator.js
 
-import React from "react";
+import React, { useContext } from "react";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -9,6 +9,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { useAuth } from "./context/AuthContext";
 import { useAppData } from "./context/AppDataContext";
+import { PurchasesContext } from "./context/PurchasesContext";
 
 import WelcomeScreen from "./screens/auth/WelcomeScreen";
 import CreateChurchScreen from "./screens/auth/CreateChurchScreen";
@@ -67,7 +68,6 @@ function AuthStack() {
       <Stack.Screen name="CreateChurch" component={CreateChurchScreen} />
       <Stack.Screen name="JoinChurch" component={JoinChurchScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="PaymentRequired" component={PaymentRequiredScreen} />
     </Stack.Navigator>
   );
 }
@@ -137,14 +137,15 @@ function AdminTabs() {
 export default function AppNavigator() {
   const { ready } = useAppData();
   const { tenant, isLoading } = useAuth();
+  const { isPro, loading: purchasesLoading } = useContext(PurchasesContext);
 
-  if (isLoading || !ready) return <Loading />;
+  if (isLoading || !ready || purchasesLoading) return <Loading />;
 
   return (
     <NavigationContainer theme={navTheme}>
       {!tenant ? (
         <AuthStack />
-      ) : tenant.planStatus === "PENDING" ? (
+      ) : !isPro ? (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="PaymentRequired" component={PaymentRequiredScreen} />
         </Stack.Navigator>

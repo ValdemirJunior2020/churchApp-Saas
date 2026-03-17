@@ -1,143 +1,93 @@
-// src/screens/auth/PaymentRequiredScreen.js
+// File: src/screens/auth/PaymentRequiredScreen.js
 
-import React from "react";
-import { Alert, Linking, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons } from "@expo/vector-icons";
-import AmbientBackground from "../../components/AmbientBackground";
-import GlassCard from "../../components/GlassCard";
-import { PAYMENT_URL } from "../../config";
-import { useAuth } from "../../context/AuthContext";
-import { colors, radius, typography } from "../../theme";
+import React, { useContext, useState } from 'react';
+import {
+  View,
+  Text,
+  Button,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
+
+import { PurchasesContext } from '../../context/PurchasesContext';
+import {
+  purchasePackage,
+  restorePurchases,
+} from '../../services/purchases';
+
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../firebase'; // make sure this exists
+import { useAuth } from '../../context/AuthContext';
 
 export default function PaymentRequiredScreen() {
-  const { tenant, logout } = useAuth();
+  const { offerings, setIsPro } = useContext(PurchasesContext);
+  const { tenant } = useAuth();
 
-  async function openPay() {
+  const [loading, setLoading] = useState(false);
+
+  const handleBuy = async () => {
     try {
-      if (!PAYMENT_URL) {
-        Alert.alert("Missing payment link", "Add PAYMENT_URL in src/config.js");
-        return;
+      setLoading(true);
+
+      const pkg = offerings?.availablePackages[0];
+
+      const customerInfo = await purchasePackage(pkg);
+
+      if (customerInfo.entitlements.active['pro']) {
+        setIsPro(true);
+
+        // 🔥 SAVE TO FIREBASE
+        await updateDoc(doc(db, "churches", tenant.id), {
+          plan: "PRO",
+          subscriptionStatus: "ACTIVE",
+          updatedAt: Date.now(),
+        });
       }
-      await Linking.openURL(PAYMENT_URL);
-    } catch {
-      Alert.alert("Error", "Could not open payment page.");
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleRestore = async () => {
+    try {
+      const customerInfo = await restorePurchases();
+
+      if (customerInfo.entitlements.active['pro']) {
+        setIsPro(true);
+
+        // 🔥 SAVE TO FIREBASE ON RESTORE
+        await updateDoc(doc(db, "churches", tenant.id), {
+          plan: "PRO",
+          subscriptionStatus: "RESTORED",
+          updatedAt: Date.now(),
+        });
+      } else {
+        Alert.alert('No purchases found');
+      }
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    }
+  };
+
+  if (!offerings) {
+    return <ActivityIndicator size="large" />;
   }
 
   return (
-    <AmbientBackground>
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.container}>
-          <GlassCard style={styles.card}>
-            <View style={styles.iconWrap}>
-              <Ionicons name="lock-closed" size={24} color="#fff" />
-            </View>
+    <View style={{ padding: 20 }}>
+      <Text style={{ fontSize: 22, marginBottom: 20 }}>
+        Unlock Premium
+      </Text>
 
-            <Text style={styles.title}>Subscription required</Text>
-            <Text style={styles.sub}>
-              Finish activation to unlock your church dashboard and member experience.
-            </Text>
+      <Button title="Subscribe" onPress={handleBuy} />
 
-            <View style={styles.infoBox}>
-              <Text style={styles.meta}>Church: {tenant?.churchName || "-"}</Text>
-              <Text style={styles.meta}>Status: {tenant?.planStatus || "-"}</Text>
-              <Text style={styles.meta}>Trial Ends: {tenant?.trialEndsAt || "-"}</Text>
-            </View>
+      <View style={{ marginTop: 20 }}>
+        <Button title="Restore Purchases" onPress={handleRestore} />
+      </View>
 
-            <Pressable style={styles.primaryWrap} onPress={openPay}>
-              <LinearGradient
-                colors={[colors.violet, colors.cyan, colors.magenta]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.primary}
-              >
-                <Ionicons name="card-outline" size={18} color="#fff" />
-                <Text style={styles.primaryText}>Open Payment Page</Text>
-              </LinearGradient>
-            </Pressable>
-
-            <Pressable style={styles.secondary} onPress={logout}>
-              <Text style={styles.secondaryText}>Logout</Text>
-            </Pressable>
-          </GlassCard>
-        </View>
-      </SafeAreaView>
-    </AmbientBackground>
+      {loading && <ActivityIndicator />}
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 18,
-  },
-  card: {},
-  iconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(124,58,237,0.28)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-  },
-  title: {
-    ...typography.h2,
-    marginTop: 16,
-  },
-  sub: {
-    ...typography.body,
-    marginTop: 10,
-  },
-  infoBox: {
-    marginTop: 16,
-    padding: 14,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.stroke,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    gap: 8,
-  },
-  meta: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  primaryWrap: {
-    marginTop: 18,
-    borderRadius: radius.pill,
-    overflow: "hidden",
-  },
-  primary: {
-    minHeight: 56,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 10,
-  },
-  primaryText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  secondary: {
-    marginTop: 12,
-    minHeight: 54,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.strokeStrong,
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-  secondaryText: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-});
