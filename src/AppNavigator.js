@@ -141,15 +141,18 @@ export default function AppNavigator() {
 
   if (isLoading || !ready || purchasesLoading) return <Loading />;
 
+  const isAdmin = tenant?.role === "ADMIN";
+  const shouldShowPaywall = !!tenant && isAdmin && !isPro;
+
   return (
     <NavigationContainer theme={navTheme}>
       {!tenant ? (
         <AuthStack />
-      ) : !isPro ? (
+      ) : shouldShowPaywall ? (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="PaymentRequired" component={PaymentRequiredScreen} />
         </Stack.Navigator>
-      ) : tenant.role === "ADMIN" ? (
+      ) : isAdmin ? (
         <AdminTabs />
       ) : (
         <MemberTabs />
