@@ -1,9 +1,13 @@
-// src/screens/auth/WelcomeScreen.js
+// File: src/screens/auth/WelcomeScreen.js
 
 import React from "react";
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
+import {
+  Pressable,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import AmbientBackground from "../../components/AmbientBackground";
 import GlassCard from "../../components/GlassCard";
 import { colors, radius, typography } from "../../theme";
@@ -13,55 +17,59 @@ export default function WelcomeScreen({ navigation }) {
     <AmbientBackground>
       <SafeAreaView style={styles.safe}>
         <View style={styles.container}>
-          <View style={styles.hero}>
+          <GlassCard style={styles.heroCard}>
             <View style={styles.badge}>
-              <Ionicons name="sparkles" size={14} color={colors.text} />
-              <Text style={styles.badgeText}>Ambient Church AI</Text>
+              <Text style={styles.badgeText}>✦ Ambient Church AI</Text>
             </View>
 
-            <Text style={styles.title}>One premium church app for pastors and members.</Text>
-            <Text style={styles.sub}>
-              Elegant glassmorphism, live stream viewing, giving, events, and a modern iPhone-first church experience.
+            <Text style={styles.title}>
+              One premium church{"\n"}
+              app for pastors and{"\n"}
+              members.
             </Text>
-          </View>
 
-          <GlassCard style={styles.card}>
-            <View style={styles.metricRow}>
-              <View style={styles.metric}>
-                <Text style={styles.metricValue}>LIVE</Text>
-                <Text style={styles.metricLabel}>YouTube inside app</Text>
+            <Text style={styles.sub}>
+              Elegant glassmorphism, live stream viewing, giving,
+              events, and a modern iPhone-first church
+              experience.
+            </Text>
+
+            <View style={styles.statsRow}>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>LIVE</Text>
+                <Text style={styles.statLabel}>YouTube inside app</Text>
               </View>
-              <View style={styles.metric}>
-                <Text style={styles.metricValue}>24/7</Text>
-                <Text style={styles.metricLabel}>Member access</Text>
+
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>24/7</Text>
+                <Text style={styles.statLabel}>Member access</Text>
               </View>
-              <View style={styles.metric}>
-                <Text style={styles.metricValue}>∞</Text>
-                <Text style={styles.metricLabel}>Scalable feel</Text>
+
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>∞</Text>
+                <Text style={styles.statLabel}>Scalable feel</Text>
               </View>
             </View>
 
-            <Pressable style={styles.primaryWrap} onPress={() => navigation.navigate("CreateChurch")}>
-              <LinearGradient
-                colors={[colors.violet, colors.cyan, colors.magenta]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.primary}
-              >
-                <Ionicons name="sparkles-outline" size={18} color="#fff" />
-                <Text style={styles.primaryText}>Create My Church</Text>
-              </LinearGradient>
+            <Pressable
+              style={[styles.button, styles.primaryButton]}
+              onPress={() => navigation.navigate("CreateChurch")}
+            >
+              <Text style={styles.primaryButtonText}>Create My Church</Text>
             </Pressable>
 
-            <Pressable style={styles.secondaryWrap} onPress={() => navigation.navigate("JoinChurch")}>
-              <View style={styles.secondary}>
-                <Ionicons name="enter-outline" size={18} color={colors.text} />
-                <Text style={styles.secondaryText}>Join Existing Church</Text>
-              </View>
+            <Pressable
+              style={[styles.button, styles.secondaryButton]}
+              onPress={() => navigation.navigate("JoinChurch")}
+            >
+              <Text style={styles.secondaryButtonText}>Join Existing Church</Text>
             </Pressable>
 
-            <Pressable style={styles.ghost} onPress={() => navigation.navigate("Login")}>
-              <Text style={styles.ghostText}>I Already Have Access</Text>
+            <Pressable
+              style={[styles.button, styles.ghostButton]}
+              onPress={() => navigation.navigate("Login")}
+            >
+              <Text style={styles.ghostButtonText}>I Already Have Access</Text>
             </Pressable>
           </GlassCard>
         </View>
@@ -71,120 +79,101 @@ export default function WelcomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 22,
-    paddingBottom: 24,
-    justifyContent: "space-between",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 24,
   },
-  hero: {
-    marginTop: 28,
+  heroCard: {
+    width: "100%",
   },
   badge: {
     alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: radius.pill,
+    borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: colors.stroke,
+    marginBottom: 18,
   },
   badgeText: {
     color: colors.text,
+    fontSize: 13,
     fontWeight: "700",
-    fontSize: 12,
   },
   title: {
     ...typography.h1,
-    marginTop: 20,
-    maxWidth: 330,
+    marginBottom: 16,
+    maxWidth: 420,
   },
   sub: {
     ...typography.body,
-    marginTop: 14,
-    maxWidth: 330,
+    color: colors.textSoft,
+    maxWidth: 520,
+    marginBottom: 22,
   },
-  card: {
-    marginBottom: 18,
-  },
-  metricRow: {
+  statsRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
     marginBottom: 18,
   },
-  metric: {
+  statCard: {
     flex: 1,
-    borderRadius: radius.lg,
+    minHeight: 74,
+    borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.stroke,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    padding: 14,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    justifyContent: "center",
+    paddingHorizontal: 16,
   },
-  metricValue: {
+  statValue: {
     color: colors.text,
-    fontSize: 24,
-    fontWeight: "800",
-    letterSpacing: -0.7,
+    fontSize: 18,
+    fontWeight: "900",
+    marginBottom: 4,
   },
-  metricLabel: {
+  statLabel: {
     color: colors.textMuted,
     fontSize: 12,
     fontWeight: "600",
-    marginTop: 6,
   },
-  primaryWrap: {
-    overflow: "hidden",
-    borderRadius: radius.pill,
-  },
-  primary: {
-    minHeight: 56,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-  },
-  primaryText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "800",
-    letterSpacing: -0.2,
-  },
-  secondaryWrap: {
-    marginTop: 12,
-  },
-  secondary: {
+  button: {
     minHeight: 54,
     borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.strokeStrong,
-    backgroundColor: "rgba(255,255,255,0.06)",
     alignItems: "center",
     justifyContent: "center",
-    flexDirection: "row",
-    gap: 10,
+    marginTop: 12,
   },
-  secondaryText: {
+  primaryButton: {
+    backgroundColor: colors.cyan,
+  },
+  primaryButtonText: {
+    color: "#000",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  secondaryButtonText: {
     color: colors.text,
     fontSize: 15,
     fontWeight: "800",
   },
-  ghost: {
-    marginTop: 12,
-    minHeight: 52,
-    alignItems: "center",
-    justifyContent: "center",
+  ghostButton: {
+    backgroundColor: "transparent",
   },
-  ghostText: {
+  ghostButtonText: {
     color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: "700",
+    fontSize: 15,
+    fontWeight: "800",
   },
 });

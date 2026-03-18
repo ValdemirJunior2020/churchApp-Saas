@@ -1,6 +1,7 @@
 // File: src/context/PurchasesContext.js
 
 import React, { createContext, useEffect, useState } from "react";
+import Constants from "expo-constants";
 import useDemoMode from "../hooks/useDemoMode";
 import {
   initPurchases,
@@ -14,6 +15,10 @@ export const PurchasesContext = createContext({
   loading: true,
   setIsPro: () => {},
 });
+
+function isRunningInExpoGo() {
+  return Constants.appOwnership === "expo";
+}
 
 export function PurchasesProvider({ children }) {
   const [offerings, setOfferings] = useState(null);
@@ -34,6 +39,16 @@ export function PurchasesProvider({ children }) {
           return;
         }
 
+        if (isRunningInExpoGo()) {
+          console.log("Expo Go detected. Skipping RevenueCat.");
+          if (mounted) {
+            setOfferings(null);
+            setIsPro(true);
+            setLoading(false);
+          }
+          return;
+        }
+
         await initPurchases();
 
         const currentOffering = await getOfferings();
@@ -45,7 +60,6 @@ export function PurchasesProvider({ children }) {
         }
       } catch (error) {
         console.log("PurchasesContext init error:", error);
-
         if (mounted) {
           setOfferings(null);
           setIsPro(false);

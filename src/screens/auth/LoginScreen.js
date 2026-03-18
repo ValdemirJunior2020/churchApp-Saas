@@ -1,7 +1,15 @@
-// src/screens/auth/LoginScreen.js
+// File: src/screens/auth/LoginScreen.js
 
 import React, { useState } from "react";
-import { Alert, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Alert,
+  Pressable,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import AmbientBackground from "../../components/AmbientBackground";
 import GlassCard from "../../components/GlassCard";
 import { useAuth } from "../../context/AuthContext";
@@ -15,9 +23,11 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   async function handleLogin() {
+    if (loading) return;
+
     try {
       setLoading(true);
-      await login(email, password);
+      await login(email.trim().toLowerCase(), password);
     } catch (error) {
       Alert.alert("Login failed", error?.message || "Could not log in.");
     } finally {
@@ -39,20 +49,32 @@ export default function LoginScreen() {
               placeholderTextColor={colors.textMuted}
               keyboardType="email-address"
               autoCapitalize="none"
+              autoCorrect={false}
               value={email}
               onChangeText={setEmail}
+              editable={!loading}
             />
+
             <TextInput
               style={styles.input}
               placeholder="Password"
               placeholderTextColor={colors.textMuted}
               secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
               value={password}
               onChangeText={setPassword}
+              editable={!loading}
             />
 
-            <Pressable style={styles.button} onPress={handleLogin} disabled={loading}>
-              <Text style={styles.buttonText}>{loading ? "Logging in..." : "Login"}</Text>
+            <Pressable
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              <Text style={styles.buttonText}>
+                {loading ? "Logging in..." : "Login"}
+              </Text>
             </Pressable>
           </GlassCard>
         </View>
@@ -93,6 +115,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: 6,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: "#fff",
