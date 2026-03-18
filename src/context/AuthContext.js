@@ -1,4 +1,4 @@
-// src/context/AuthContext.js
+// File: src/context/AuthContext.js
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
@@ -12,9 +12,11 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { auth, db } from "../firebase/firebaseConfig";
@@ -57,29 +59,38 @@ export function AuthProvider({ children }) {
     }
 
     const userData = userSnap.data();
-    setProfile(userData);
+    setProfile({
+      uid: user.uid,
+      ...userData,
+    });
 
-    if (userData?.churchId) {
-      const churchRef = doc(db, "churches", userData.churchId);
-      const churchSnap = await getDoc(churchRef);
-
-      if (churchSnap.exists()) {
-        const churchData = churchSnap.data();
-        setTenant({
-          churchId: churchSnap.id,
-          churchName: churchData.churchName || "",
-          churchCode: churchData.churchCode || "",
-          role: userData.role || "MEMBER",
-          planStatus: churchData.planStatus || "ACTIVE",
-          trialEndsAt: churchData.trialEndsAt || null,
-          ...churchData,
-        });
-      } else {
-        setTenant(null);
-      }
-    } else {
+    if (!userData?.churchId) {
       setTenant(null);
+      return;
     }
+
+    const churchRef = doc(db, "churches", userData.churchId);
+    const churchSnap = await getDoc(churchRef);
+
+    if (!churchSnap.exists()) {
+      setTenant(null);
+      return;
+    }
+
+    const churchData = churchSnap.data();
+
+    setTenant({
+      churchId: churchSnap.id,
+      churchName: churchData.churchName || "",
+      churchCode: churchData.churchCode || "",
+      role: userData.role || "MEMBER",
+      plan: churchData.plan || "FREE",
+      planStatus: churchData.planStatus || "ACTIVE",
+      subscriptionStatus: churchData.subscriptionStatus || "INACTIVE",
+      trialEndsAt: churchData.trialEndsAt || null,
+      ownerId: churchData.ownerId || churchData.pastorId || "",
+      ...churchData,
+    });
   }
 
   useEffect(() => {
@@ -90,6 +101,8 @@ export function AuthProvider({ children }) {
         await loadUserData(user);
       } catch (error) {
         console.error("Auth load error:", error);
+        setProfile(null);
+        setTenant(null);
       } finally {
         setIsLoading(false);
       }
@@ -105,15 +118,50 @@ export function AuthProvider({ children }) {
     fullName,
     phone = "",
   }) {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    const cleanChurchName = String(churchName || "").trim();
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanFullName = String(fullName || "").trim();
+    const cleanPhone = String(phone || "").trim();
+
+    if (!cleanChurchName) {
+      throw new Error("Church name is required.");
+    }
+
+    if (!cleanFullName) {
+      throw new Error("Full name is required.");
+    }
+
+    if (!cleanEmail) {
+      throw new Error("Email is required.");
+    }
+
+    if (!password || password.length < 6) {
+      throw new Error("Password must be at least 6 characters.");
+    }
+
+    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
     const uid = cred.user.uid;
 
     const churchRef = doc(collection(db, "churches"));
-    const churchCode = makeChurchCode(churchName);
+    const churchCode = makeChurchCode(cleanChurchName);
+
+    await setDoc(doc(db, "users", uid), {
+      uid,
+      fullName: cleanFullName,
+      email: cleanEmail,
+      phone: cleanPhone,
+      role: "ADMIN",
+      churchId: churchRef.id,
+      churchCode,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
 
     await setDoc(churchRef, {
-      churchName: churchName || "",
+      churchId: churchRef.id,
+      churchName: cleanChurchName,
       churchCode,
+      ownerId: uid,
       pastorId: uid,
       createdBy: uid,
       createdAt: serverTimestamp(),
@@ -127,29 +175,23 @@ export function AuthProvider({ children }) {
       youtubeVideoId: "",
       themePrimaryHex: "#0F172A",
       themeAccentHex: "#22D3EE",
-      planStatus: "ACTIVE",
-    });
-
-    await setDoc(doc(db, "users", uid), {
-      uid,
-      fullName: fullName || "",
-      email,
-      phone,
       role: "ADMIN",
-      churchId: churchRef.id,
-      churchCode,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      plan: "FREE",
+      planStatus: "ACTIVE",
+      subscriptionStatus: "INACTIVE",
+      trialEndsAt: null,
     });
 
     await setDoc(doc(db, "churches", churchRef.id, "members", uid), {
       uid,
-      fullName: fullName || "",
-      email,
-      phone,
+      fullName: cleanFullName,
+      email: cleanEmail,
+      phone: cleanPhone,
       role: "ADMIN",
       joinedAt: serverTimestamp(),
       status: "ACTIVE",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
 
     await loadUserData(cred.user);
@@ -164,6 +206,13 @@ export function AuthProvider({ children }) {
     phone = "",
   }) {
     const code = String(churchCode || "").trim().toUpperCase();
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanFullName = String(fullName || "").trim();
+    const cleanPhone = String(phone || "").trim();
+
+    if (!code) {
+      throw new Error("Church Code not found.");
+    }
 
     const churchesRef = collection(db, "churches");
     const q = query(churchesRef, where("churchCode", "==", code));
@@ -176,14 +225,14 @@ export function AuthProvider({ children }) {
     const churchDoc = snap.docs[0];
     const churchId = churchDoc.id;
 
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
     const uid = cred.user.uid;
 
     await setDoc(doc(db, "users", uid), {
       uid,
-      fullName: fullName || "",
-      email,
-      phone,
+      fullName: cleanFullName,
+      email: cleanEmail,
+      phone: cleanPhone,
       role: "MEMBER",
       churchId,
       churchCode: code,
@@ -193,12 +242,19 @@ export function AuthProvider({ children }) {
 
     await setDoc(doc(db, "churches", churchId, "members", uid), {
       uid,
-      fullName: fullName || "",
-      email,
-      phone,
+      fullName: cleanFullName,
+      email: cleanEmail,
+      phone: cleanPhone,
       role: "MEMBER",
       joinedAt: serverTimestamp(),
       status: "ACTIVE",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    await updateDoc(doc(db, "churches", churchId), {
+      memberCount: increment(1),
+      updatedAt: serverTimestamp(),
     });
 
     await loadUserData(cred.user);
@@ -206,7 +262,8 @@ export function AuthProvider({ children }) {
   }
 
   async function login(email, password) {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
     await loadUserData(cred.user);
     return cred.user;
   }
