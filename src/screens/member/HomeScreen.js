@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useContext } from "react";
 import {
+  Alert,
   Animated,
   Image,
   Pressable,
@@ -10,7 +11,6 @@ import {
   StyleSheet,
   Text,
   View,
-  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AmbientBackground from "../../components/AmbientBackground";
@@ -36,27 +36,26 @@ const DEFAULT_VERSE = {
 
 export default function HomeScreen({ navigation }) {
   const { config, events } = useAppData();
-  const { tenant } = useAuth();
+  const { tenant, profile, logout, deleteAccount } = useAuth();
   const { isPro } = useContext(PurchasesContext);
 
-  const { demo, toggleDemo } = useDemoMode();
+  const { toggleDemo } = useDemoMode();
 
-  const isAdmin = tenant?.role === "ADMIN";
+  const isAdmin = (tenant?.role || profile?.role) === "ADMIN";
 
   const { showPremium, setShowPremium } = usePremiumTrigger(
     isAdmin,
     isPro
   );
 
-  const churchName = config?.churchName || "Sanctuary";
-  const logoSource = safeImageSource(config?.logoUrl || "");
-  const liveSource = config?.youtubeUrl || config?.youtubeVideoId || "";
+  const churchName = config?.churchName || tenant?.churchName || "Sanctuary";
+  const logoSource = safeImageSource(config?.logoUrl || tenant?.logoUrl || "");
+  const liveSource = config?.youtubeUrl || config?.youtubeVideoId || tenant?.youtubeUrl || tenant?.youtubeVideoId || "";
   const [logoFailed, setLogoFailed] = useState(false);
 
   const glow = useRef(new Animated.Value(0.6)).current;
-
-  // 🔥 DEMO MODE SECRET TAP
   const [tapCount, setTapCount] = useState(0);
+  const [busy, setBusy] = useState(false);
 
   const handleSecretTap = () => {
     const newCount = tapCount + 1;
@@ -84,6 +83,43 @@ export default function HomeScreen({ navigation }) {
     ? events.filter((event) => event?.isActive !== false).slice(0, 2)
     : [];
 
+  async function handleLogout() {
+    if (busy) return;
+
+    try {
+      setBusy(true);
+      await logout();
+    } catch (error) {
+      Alert.alert("Error", error?.message || "Could not log out.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleDeleteAccount() {
+    Alert.alert(
+      "Delete account",
+      "This will permanently delete your member account. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setBusy(true);
+              await deleteAccount();
+            } catch (error) {
+              Alert.alert("Error", error?.message || "Could not delete account.");
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   return (
     <AmbientBackground>
       <SafeAreaView style={styles.safe}>
@@ -94,7 +130,6 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.title}>{churchName}</Text>
             </View>
 
-            {/* 🔥 LOGO WITH DEMO TAP */}
             {logoSource && !logoFailed ? (
               <Pressable onPress={handleSecretTap}>
                 <Image source={logoSource} style={styles.logo} onError={() => setLogoFailed(true)} />
@@ -110,7 +145,6 @@ export default function HomeScreen({ navigation }) {
             )}
           </View>
 
-          {/* 🔥 ADMIN UPGRADE CARD */}
           {isAdmin && !isPro && (
             <GlassCard style={styles.upgradeCard}>
               <Text style={styles.upgradeTitle}>Unlock Church Pro 🚀</Text>
@@ -202,6 +236,34 @@ export default function HomeScreen({ navigation }) {
                   : "Pastor can add a YouTube Live URL in Settings to unlock the Live tab experience."}
               </Text>
             </GlassCard>
+
+            <GlassCard style={styles.accountCard}>
+              <Text style={styles.cardKicker}>ACCOUNT</Text>
+              <Text style={styles.accountName}>{profile?.fullName || "Member"}</Text>
+              <Text style={styles.accountMeta}>{profile?.email || ""}</Text>
+
+              <View style={styles.accountButtons}>
+                <Pressable
+                  style={[styles.secondaryAction, busy && styles.actionDisabled]}
+                  onPress={handleLogout}
+                  disabled={busy}
+                >
+                  <Text style={styles.secondaryActionText}>
+                    {busy ? "Please wait..." : "Log Out"}
+                  </Text>
+                </Pressable>
+
+                {!isAdmin && (
+                  <Pressable
+                    style={[styles.dangerAction, busy && styles.actionDisabled]}
+                    onPress={handleDeleteAccount}
+                    disabled={busy}
+                  >
+                    <Text style={styles.dangerActionText}>Delete Account</Text>
+                  </Pressable>
+                )}
+              </View>
+            </GlassCard>
           </View>
         </ScrollView>
 
@@ -252,7 +314,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "800",
   },
-
   upgradeCard: {
     marginBottom: 14,
     borderColor: "rgba(0,229,255,0.3)",
@@ -277,7 +338,6 @@ const styles = StyleSheet.create({
     color: "#000",
     fontWeight: "800",
   },
-
   bento: { gap: 14 },
   bentoRow: {
     flexDirection: "row",
@@ -355,4 +415,48 @@ const styles = StyleSheet.create({
   eventDot: { width: 10, height: 10, borderRadius: 999, backgroundColor: colors.magenta, marginTop: 6 },
   eventTitle: { color: colors.text, fontSize: 15, fontWeight: "800" },
   eventMeta: { color: colors.textMuted, fontSize: 12, fontWeight: "600", marginTop: 4 },
+  accountCard: {},
+  accountName: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+    marginTop: 10,
+  },
+  accountMeta: {
+    color: colors.textMuted,
+    marginTop: 6,
+  },
+  accountButtons: {
+    marginTop: 16,
+    gap: 10,
+  },
+  secondaryAction: {
+    minHeight: 48,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.strokeStrong,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryActionText: {
+    color: colors.text,
+    fontWeight: "800",
+  },
+  dangerAction: {
+    minHeight: 48,
+    borderRadius: radius.lg,
+    backgroundColor: "rgba(255, 59, 48, 0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 59, 48, 0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dangerActionText: {
+    color: "#ffb3ad",
+    fontWeight: "800",
+  },
+  actionDisabled: {
+    opacity: 0.65,
+  },
 });

@@ -22,6 +22,7 @@ import LiveScreen from "./screens/member/LiveScreen";
 import GivingScreen from "./screens/member/GivingScreen";
 import EventsScreen from "./screens/member/EventsScreen";
 import ChatScreen from "./screens/member/ChatScreen";
+import MemberSettingsScreen from "./screens/member/MemberSettingsScreen";
 
 import AdminDashboardScreen from "./screens/admin/AdminDashboardScreen";
 import AdminSettingsScreen from "./screens/admin/AdminSettingsScreen";
@@ -77,6 +78,7 @@ function memberIcon(routeName, focused) {
   if (routeName === "Live") return focused ? "radio" : "radio-outline";
   if (routeName === "Events") return focused ? "calendar" : "calendar-outline";
   if (routeName === "Chat") return focused ? "chatbubble" : "chatbubble-outline";
+  if (routeName === "Settings") return focused ? "settings" : "settings-outline";
   return focused ? "heart" : "heart-outline";
 }
 
@@ -99,6 +101,7 @@ function MemberTabs() {
       <Tab.Screen name="Events" component={EventsScreen} />
       <Tab.Screen name="Chat" component={ChatScreen} />
       <Tab.Screen name="Giving" component={GivingScreen} />
+      <Tab.Screen name="Settings" component={MemberSettingsScreen} />
     </Tab.Navigator>
   );
 }
@@ -136,13 +139,16 @@ function AdminTabs() {
 
 export default function AppNavigator() {
   const { ready } = useAppData();
-  const { tenant, isLoading } = useAuth();
+  const { tenant, isLoading, profile } = useAuth();
   const { isPro, loading: purchasesLoading } = useContext(PurchasesContext);
 
-  if (isLoading || !ready || purchasesLoading) return <Loading />;
+  if (isLoading || !ready || purchasesLoading) {
+    return <Loading />;
+  }
 
-  const isAdmin = tenant?.role === "ADMIN";
-  const shouldShowPaywall = !!tenant && isAdmin && !isPro;
+  const effectiveRole = profile?.role || tenant?.role || "MEMBER";
+  const isAdmin = effectiveRole === "ADMIN";
+  const shouldShowPaywall = Boolean(tenant) && isAdmin && !isPro;
 
   return (
     <NavigationContainer theme={navTheme}>

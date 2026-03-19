@@ -1,10 +1,10 @@
-// src/screens/member/ChatScreen.js
+// File: src/screens/member/ChatScreen.js
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,13 +12,12 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import {
   addDoc,
   collection,
-  limit,
   onSnapshot,
   orderBy,
   query,
@@ -30,70 +29,63 @@ import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebase/firebaseConfig";
 import { colors, radius, typography } from "../../theme";
 
-function formatTime(value) {
-  if (!value) return "Now";
-  const date = typeof value?.toDate === "function" ? value.toDate() : new Date(value);
-  if (Number.isNaN(date.getTime())) return "Now";
-  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
+const TAB_BAR_SPACE = 110;
 
 export default function ChatScreen() {
   const { tenant, profile } = useAuth();
+  const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
-  const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const flatListRef = useRef(null);
+
+  const churchId = tenant?.churchId;
+
+  const messagesRef = useMemo(() => {
+    if (!churchId) return null;
+    return collection(db, "churches", churchId, "chatMessages");
+  }, [churchId]);
 
   useEffect(() => {
-    if (!tenant?.churchId) {
-      setLoading(false);
-      return undefined;
-    }
+    if (!messagesRef) return;
 
-    const messagesRef = collection(db, "churches", tenant.churchId, "chatMessages");
-    const q = query(messagesRef, orderBy("createdAt", "desc"), limit(100));
+    const q = query(messagesRef, orderBy("createdAt", "asc"));
 
     const unsub = onSnapshot(
       q,
-      (snap) => {
-        const next = snap.docs.map((item) => ({ messageId: item.id, ...item.data() }));
-        setMessages(next);
-        setLoading(false);
+      (snapshot) => {
+        const list = snapshot.docs.map((item) => ({
+          id: item.id,
+          ...item.data(),
+        }));
+        setMessages(list);
       },
       (error) => {
-        console.error("chat snapshot error", error);
-        setLoading(false);
+        console.log("chat snapshot error", error);
       }
     );
 
-    return () => unsub();
-  }, [tenant?.churchId]);
+    return unsub;
+  }, [messagesRef]);
 
-  const title = useMemo(() => tenant?.churchName || "Church Chat", [tenant?.churchName]);
+  async function handleSend() {
+    const cleanMessage = String(message || "").trim();
 
-  async function sendMessage() {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    if (!tenant?.churchId) {
-      Alert.alert("Unavailable", "Join or create a church first.");
-      return;
-    }
+    if (!cleanMessage || sending || !churchId || !profile?.uid) return;
 
     try {
       setSending(true);
-      await addDoc(collection(db, "churches", tenant.churchId, "chatMessages"), {
-        text: trimmed,
-        churchId: tenant.churchId,
-        senderId: profile?.uid || "",
-        senderName: profile?.fullName || profile?.email || "Member",
-        senderEmail: profile?.email || "",
-        role: profile?.role || "MEMBER",
+
+      await addDoc(collection(db, "churches", churchId, "chatMessages"), {
+        uid: profile.uid,
+        fullName: profile.fullName || "Member",
+        email: profile.email || "",
+        text: cleanMessage,
         createdAt: serverTimestamp(),
       });
-      setText("");
-      requestAnimationFrame(() => flatListRef.current?.scrollToOffset?.({ offset: 0, animated: true }));
+
+      setMessage("");
+      Keyboard.dismiss();
     } catch (error) {
+      console.log("chat send error", error);
       Alert.alert("Error", error?.message || "Could not send message.");
     } finally {
       setSending(false);
@@ -101,16 +93,14 @@ export default function ChatScreen() {
   }
 
   function renderItem({ item }) {
-    const mine = item.senderId && item.senderId === profile?.uid;
+    const isMine = item.uid === profile?.uid;
+
     return (
-      <View style={[styles.messageRow, mine ? styles.mineRow : styles.otherRow]}>
-        <GlassCard style={[styles.messageCard, mine && styles.mineCard]}>
-          <View style={styles.messageHeader}>
-            <Text style={styles.sender}>{item.senderName || "Member"}</Text>
-            <Text style={styles.time}>{formatTime(item.createdAt)}</Text>
-          </View>
+      <View style={[styles.messageRow, isMine && styles.messageRowMine]}>
+        <View style={[styles.messageBubble, isMine && styles.messageBubbleMine]}>
+          <Text style={styles.messageAuthor}>{item.fullName || "Member"}</Text>
           <Text style={styles.messageText}>{item.text || ""}</Text>
-        </GlassCard>
+        </View>
       </View>
     );
   }
@@ -118,161 +108,171 @@ export default function ChatScreen() {
   return (
     <AmbientBackground>
       <SafeAreaView style={styles.safe}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
-        >
-          <View style={styles.container}>
-            <Text style={styles.kicker}>PRO FEATURE</Text>
-            <Text style={styles.title}>{title} Chat</Text>
-            <Text style={styles.sub}>Members can pray, encourage, and stay connected together in real time.</Text>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <KeyboardAvoidingView
+            style={styles.flex}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+          >
+            <View style={styles.container}>
+              <GlassCard style={styles.headerCard}>
+                <Text style={styles.title}>Church Chat</Text>
+                <Text style={styles.sub}>Stay connected with your church family.</Text>
+              </GlassCard>
 
-            <GlassCard style={styles.listWrap}>
-              {loading ? (
-                <View style={styles.centerState}>
-                  <ActivityIndicator color={colors.cyan} />
-                  <Text style={styles.stateText}>Loading messages...</Text>
-                </View>
-              ) : messages.length === 0 ? (
-                <View style={styles.centerState}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={32} color={colors.textMuted} />
-                  <Text style={styles.stateTitle}>No messages yet</Text>
-                  <Text style={styles.stateText}>Start the first conversation for your church family.</Text>
-                </View>
-              ) : (
+              <GlassCard style={styles.listCard}>
                 <FlatList
-                  ref={flatListRef}
                   data={messages}
-                  keyExtractor={(item) => item.messageId}
+                  keyExtractor={(item) => item.id}
                   renderItem={renderItem}
-                  inverted
-                  contentContainerStyle={styles.messagesContent}
-                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.listContent}
+                  keyboardShouldPersistTaps="handled"
                 />
-              )}
-            </GlassCard>
+              </GlassCard>
 
-            <View style={styles.composerWrap}>
-              <TextInput
-                style={styles.input}
-                value={text}
-                onChangeText={setText}
-                placeholder="Write a message to your church family"
-                placeholderTextColor={colors.textMuted}
-                multiline
-              />
-              <Pressable style={[styles.sendBtn, sending && styles.sendBtnDisabled]} onPress={sendMessage} disabled={sending}>
-                <Ionicons name={sending ? "hourglass-outline" : "send"} size={18} color="#fff" />
-              </Pressable>
+              <GlassCard style={styles.inputCard}>
+                <TextInput
+                  style={styles.input}
+                  value={message}
+                  onChangeText={setMessage}
+                  placeholder="Write a message..."
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  returnKeyType="default"
+                  blurOnSubmit={false}
+                />
+
+                <View style={styles.actionRow}>
+                  <Pressable style={styles.dismissButton} onPress={Keyboard.dismiss}>
+                    <Text style={styles.dismissButtonText}>Hide Keyboard</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.sendButton, sending && styles.sendButtonDisabled]}
+                    onPress={handleSend}
+                    disabled={sending}
+                  >
+                    <Text style={styles.sendButtonText}>
+                      {sending ? "Sending..." : "Send"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </GlassCard>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
       </SafeAreaView>
     </AmbientBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  flex: { flex: 1 },
+  safe: {
+    flex: 1,
+  },
+  flex: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     paddingHorizontal: 18,
     paddingTop: 16,
-    paddingBottom: 100,
-  },
-  kicker: { ...typography.kicker },
-  title: { ...typography.h2, marginTop: 8 },
-  sub: { ...typography.body, marginTop: 8 },
-  listWrap: {
-    flex: 1,
-    marginTop: 16,
-    padding: 0,
-    overflow: "hidden",
-  },
-  messagesContent: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    gap: 10,
-  },
-  messageRow: { width: "100%" },
-  mineRow: { alignItems: "flex-end" },
-  otherRow: { alignItems: "flex-start" },
-  messageCard: {
-    maxWidth: "88%",
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-  mineCard: {
-    borderColor: "rgba(34,211,238,0.30)",
-    backgroundColor: "rgba(34,211,238,0.10)",
-  },
-  messageHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    paddingBottom: TAB_BAR_SPACE,
     gap: 12,
   },
-  sender: {
-    color: colors.text,
+  headerCard: {},
+  title: {
+    ...typography.h2,
+  },
+  sub: {
+    ...typography.body,
+    marginTop: 8,
+  },
+  listCard: {
+    flex: 1,
+    minHeight: 280,
+  },
+  listContent: {
+    paddingBottom: 8,
+  },
+  messageRow: {
+    marginBottom: 10,
+    alignItems: "flex-start",
+  },
+  messageRowMine: {
+    alignItems: "flex-end",
+  },
+  messageBubble: {
+    maxWidth: "82%",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: radius.lg,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: colors.stroke,
+  },
+  messageBubbleMine: {
+    backgroundColor: "rgba(34,211,238,0.15)",
+    borderColor: "rgba(34,211,238,0.35)",
+  },
+  messageAuthor: {
+    color: colors.textSoft,
     fontSize: 12,
     fontWeight: "800",
-  },
-  time: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: "700",
+    marginBottom: 6,
   },
   messageText: {
     color: colors.text,
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: "500",
-    marginTop: 8,
   },
-  centerState: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 22,
-    gap: 10,
-  },
-  stateTitle: {
-    ...typography.h3,
-    textAlign: "center",
-  },
-  stateText: {
-    ...typography.body,
-    textAlign: "center",
-  },
-  composerWrap: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 10,
-    marginTop: 14,
+  inputCard: {
+    marginBottom: 0,
   },
   input: {
-    flex: 1,
-    minHeight: 54,
-    maxHeight: 140,
-    borderRadius: radius.xl,
+    minHeight: 84,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.stroke,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     color: colors.text,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingTop: 14,
     textAlignVertical: "top",
   },
-  sendBtn: {
-    width: 54,
-    height: 54,
-    borderRadius: 20,
+  actionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 12,
+  },
+  dismissButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.strokeStrong,
+    backgroundColor: "rgba(255,255,255,0.06)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.violet,
   },
-  sendBtnDisabled: {
-    opacity: 0.6,
+  dismissButtonText: {
+    color: colors.text,
+    fontWeight: "800",
+  },
+  sendButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: radius.lg,
+    backgroundColor: colors.cyan,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendButtonDisabled: {
+    opacity: 0.7,
+  },
+  sendButtonText: {
+    color: "#000",
+    fontWeight: "800",
   },
 });

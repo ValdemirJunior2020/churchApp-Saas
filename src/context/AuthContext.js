@@ -3,12 +3,14 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -18,6 +20,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { auth, db } from "../firebase/firebaseConfig";
 
@@ -34,6 +37,18 @@ function makeChurchCode(churchName = "CHURCH") {
 
   const random = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `${clean || "CHURCH"}-${random}`;
+}
+
+async function ensureFreshAuthSession(user) {
+  if (!user) {
+    throw new Error("Authentication session not available.");
+  }
+
+  await user.getIdToken(true);
+
+  if (auth.currentUser?.uid !== user.uid) {
+    throw new Error("Authentication session not ready yet. Please try again.");
+  }
 }
 
 export function AuthProvider({ children }) {
@@ -59,17 +74,28 @@ export function AuthProvider({ children }) {
     }
 
     const userData = userSnap.data();
-    setProfile({
-      uid: user.uid,
-      ...userData,
-    });
 
-    if (!userData?.churchId) {
+    const normalizedProfile = {
+      uid: user.uid,
+      fullName: userData.fullName || "",
+      email: userData.email || "",
+      phone: userData.phone || "",
+      role: userData.role || "MEMBER",
+      churchId: userData.churchId || "",
+      churchCode: userData.churchCode || "",
+      createdAt: userData.createdAt || null,
+      updatedAt: userData.updatedAt || null,
+      ...userData,
+    };
+
+    setProfile(normalizedProfile);
+
+    if (!normalizedProfile.churchId) {
       setTenant(null);
       return;
     }
 
-    const churchRef = doc(db, "churches", userData.churchId);
+    const churchRef = doc(db, "churches", normalizedProfile.churchId);
     const churchSnap = await getDoc(churchRef);
 
     if (!churchSnap.exists()) {
@@ -79,18 +105,28 @@ export function AuthProvider({ children }) {
 
     const churchData = churchSnap.data();
 
-    setTenant({
+    const normalizedTenant = {
       churchId: churchSnap.id,
       churchName: churchData.churchName || "",
       churchCode: churchData.churchCode || "",
-      role: userData.role || "MEMBER",
+      ownerId: churchData.ownerId || churchData.pastorId || churchData.createdBy || "",
       plan: churchData.plan || "FREE",
       planStatus: churchData.planStatus || "ACTIVE",
       subscriptionStatus: churchData.subscriptionStatus || "INACTIVE",
       trialEndsAt: churchData.trialEndsAt || null,
-      ownerId: churchData.ownerId || churchData.pastorId || "",
-      ...churchData,
-    });
+      memberCount: churchData.memberCount || 0,
+      backgroundImageUrl: churchData.backgroundImageUrl || "",
+      logoUrl: churchData.logoUrl || "",
+      youtubeUrl: churchData.youtubeUrl || "",
+      youtubeVideoId: churchData.youtubeVideoId || "",
+      themePrimaryHex: churchData.themePrimaryHex || "#0F172A",
+      themeAccentHex: churchData.themeAccentHex || "#22D3EE",
+      createdAt: churchData.createdAt || null,
+      updatedAt: churchData.updatedAt || null,
+      role: normalizedProfile.role || "MEMBER",
+    };
+
+    setTenant(normalizedTenant);
   }
 
   useEffect(() => {
@@ -123,24 +159,15 @@ export function AuthProvider({ children }) {
     const cleanFullName = String(fullName || "").trim();
     const cleanPhone = String(phone || "").trim();
 
-    if (!cleanChurchName) {
-      throw new Error("Church name is required.");
-    }
-
-    if (!cleanFullName) {
-      throw new Error("Full name is required.");
-    }
-
-    if (!cleanEmail) {
-      throw new Error("Email is required.");
-    }
-
-    if (!password || password.length < 6) {
-      throw new Error("Password must be at least 6 characters.");
-    }
+    if (!cleanChurchName) throw new Error("Church name is required.");
+    if (!cleanFullName) throw new Error("Full name is required.");
+    if (!cleanEmail) throw new Error("Email is required.");
+    if (!password || password.length < 6) throw new Error("Password must be at least 6 characters.");
 
     const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
     const uid = cred.user.uid;
+
+    await ensureFreshAuthSession(cred.user);
 
     const churchRef = doc(collection(db, "churches"));
     const churchCode = makeChurchCode(cleanChurchName);
@@ -175,7 +202,6 @@ export function AuthProvider({ children }) {
       youtubeVideoId: "",
       themePrimaryHex: "#0F172A",
       themeAccentHex: "#22D3EE",
-      role: "ADMIN",
       plan: "FREE",
       planStatus: "ACTIVE",
       subscriptionStatus: "INACTIVE",
@@ -210,9 +236,10 @@ export function AuthProvider({ children }) {
     const cleanFullName = String(fullName || "").trim();
     const cleanPhone = String(phone || "").trim();
 
-    if (!code) {
-      throw new Error("Church Code not found.");
-    }
+    if (!code) throw new Error("Please enter the Church Code.");
+    if (!cleanFullName) throw new Error("Please enter your full name.");
+    if (!cleanEmail) throw new Error("Please enter your email.");
+    if (!password || password.length < 6) throw new Error("Password must be at least 6 characters.");
 
     const churchesRef = collection(db, "churches");
     const q = query(churchesRef, where("churchCode", "==", code));
@@ -225,40 +252,52 @@ export function AuthProvider({ children }) {
     const churchDoc = snap.docs[0];
     const churchId = churchDoc.id;
 
-    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-    const uid = cred.user.uid;
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      const uid = cred.user.uid;
 
-    await setDoc(doc(db, "users", uid), {
-      uid,
-      fullName: cleanFullName,
-      email: cleanEmail,
-      phone: cleanPhone,
-      role: "MEMBER",
-      churchId,
-      churchCode: code,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+      await ensureFreshAuthSession(cred.user);
 
-    await setDoc(doc(db, "churches", churchId, "members", uid), {
-      uid,
-      fullName: cleanFullName,
-      email: cleanEmail,
-      phone: cleanPhone,
-      role: "MEMBER",
-      joinedAt: serverTimestamp(),
-      status: "ACTIVE",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+      await setDoc(doc(db, "users", uid), {
+        uid,
+        fullName: cleanFullName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        role: "MEMBER",
+        churchId,
+        churchCode: code,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
 
-    await updateDoc(doc(db, "churches", churchId), {
-      memberCount: increment(1),
-      updatedAt: serverTimestamp(),
-    });
+      await setDoc(doc(db, "churches", churchId, "members", uid), {
+        uid,
+        fullName: cleanFullName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        role: "MEMBER",
+        joinedAt: serverTimestamp(),
+        status: "ACTIVE",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
 
-    await loadUserData(cred.user);
-    return { uid, churchId };
+      await updateDoc(doc(db, "churches", churchId), {
+        memberCount: increment(1),
+        updatedAt: serverTimestamp(),
+      });
+
+      await loadUserData(cred.user);
+      return { uid, churchId };
+    } catch (error) {
+      if (error?.code === "auth/email-already-in-use") {
+        throw new Error("This email is already registered. Tap 'I Already Have Access' and log in instead.");
+      }
+      if (error?.code === "permission-denied" || error?.message?.includes("Missing or insufficient permissions")) {
+        throw new Error("Permission denied while joining church. Publish the Firestore rules and try again.");
+      }
+      throw error;
+    }
   }
 
   async function login(email, password) {
@@ -275,6 +314,39 @@ export function AuthProvider({ children }) {
     setTenant(null);
   }
 
+  async function deleteAccount() {
+    const currentUser = auth.currentUser;
+    const currentProfile = profile;
+    const currentTenant = tenant;
+
+    if (!currentUser || !currentProfile) {
+      throw new Error("No authenticated user found.");
+    }
+
+    if (currentProfile.role === "ADMIN") {
+      throw new Error("Admin account deletion is blocked for now. Please transfer ownership first.");
+    }
+
+    const batch = writeBatch(db);
+
+    if (currentTenant?.churchId) {
+      batch.delete(doc(db, "churches", currentTenant.churchId, "members", currentUser.uid));
+      batch.update(doc(db, "churches", currentTenant.churchId), {
+        memberCount: increment(-1),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    batch.delete(doc(db, "users", currentUser.uid));
+    await batch.commit();
+
+    await deleteUser(currentUser);
+
+    setFirebaseUser(null);
+    setProfile(null);
+    setTenant(null);
+  }
+
   const value = useMemo(
     () => ({
       user: firebaseUser,
@@ -285,6 +357,7 @@ export function AuthProvider({ children }) {
       joinChurchAccount,
       login,
       logout,
+      deleteAccount,
     }),
     [firebaseUser, profile, tenant, isLoading]
   );
