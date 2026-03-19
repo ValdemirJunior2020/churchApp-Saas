@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useRef, useState, useContext } from "react";
 import {
   Alert,
   Animated,
-  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -15,6 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import AmbientBackground from "../../components/AmbientBackground";
 import GlassCard from "../../components/GlassCard";
+import ChurchBrandHeader from "../../components/ChurchBrandHeader";
 import AIFab from "../../components/AIFab";
 import PremiumScreen from "../premium/PremiumScreen";
 import usePremiumTrigger from "../../hooks/usePremiumTrigger";
@@ -26,7 +26,6 @@ import { PurchasesContext } from "../../context/PurchasesContext";
 
 import { colors, radius, typography } from "../../theme";
 import { buildYouTubeEmbedUrl } from "../../utils/youtube";
-import { safeImageSource } from "../../utils/media";
 
 const DEFAULT_VERSE = {
   title: "Verse of the Day",
@@ -38,20 +37,17 @@ export default function HomeScreen({ navigation }) {
   const { config, events } = useAppData();
   const { tenant, profile, logout, deleteAccount } = useAuth();
   const { isPro } = useContext(PurchasesContext);
-
   const { toggleDemo } = useDemoMode();
 
   const isAdmin = (tenant?.role || profile?.role) === "ADMIN";
+  const { showPremium, setShowPremium } = usePremiumTrigger(isAdmin, isPro);
 
-  const { showPremium, setShowPremium } = usePremiumTrigger(
-    isAdmin,
-    isPro
-  );
-
-  const churchName = config?.churchName || tenant?.churchName || "Sanctuary";
-  const logoSource = safeImageSource(config?.logoUrl || tenant?.logoUrl || "");
-  const liveSource = config?.youtubeUrl || config?.youtubeVideoId || tenant?.youtubeUrl || tenant?.youtubeVideoId || "";
-  const [logoFailed, setLogoFailed] = useState(false);
+  const liveSource =
+    config?.youtubeUrl ||
+    config?.youtubeVideoId ||
+    tenant?.youtubeUrl ||
+    tenant?.youtubeVideoId ||
+    "";
 
   const glow = useRef(new Animated.Value(0.6)).current;
   const [tapCount, setTapCount] = useState(0);
@@ -124,32 +120,19 @@ export default function HomeScreen({ navigation }) {
     <AmbientBackground>
       <SafeAreaView style={styles.safe}>
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={styles.kicker}>WELCOME BACK</Text>
-              <Text style={styles.title}>{churchName}</Text>
-            </View>
-
-            {logoSource && !logoFailed ? (
-              <Pressable onPress={handleSecretTap}>
-                <Image source={logoSource} style={styles.logo} onError={() => setLogoFailed(true)} />
-              </Pressable>
-            ) : (
-              <Pressable onPress={handleSecretTap}>
-                <View style={styles.logoFallback}>
-                  <Text style={styles.logoFallbackText}>
-                    {churchName.slice(0, 1).toUpperCase()}
-                  </Text>
-                </View>
-              </Pressable>
-            )}
-          </View>
+          <ChurchBrandHeader
+            title={config?.churchName || tenant?.churchName || "Your Church"}
+            subtitle="Welcome back. Stay close to your church family, watch live, and keep everything in one place."
+            centered
+            showChurchCode
+            onLogoPress={handleSecretTap}
+          />
 
           {isAdmin && !isPro && (
             <GlassCard style={styles.upgradeCard}>
               <Text style={styles.upgradeTitle}>Unlock Church Pro 🚀</Text>
               <Text style={styles.upgradeText}>
-                Start your 7-day free trial to enable live streaming, member management, and more.
+                Start your 7-day free trial to enable premium church tools and keep the full pastor experience active.
               </Text>
 
               <Pressable style={styles.upgradeButton} onPress={() => setShowPremium(true)}>
@@ -168,9 +151,7 @@ export default function HomeScreen({ navigation }) {
                 </Text>
               </View>
 
-              <Text style={styles.heroTitle}>
-                Beautiful worship, smarter church connection.
-              </Text>
+              <Text style={styles.heroTitle}>Beautiful worship. Better connection.</Text>
               <Text style={styles.heroText}>
                 Members can watch, give, chat together, and stay in sync with everything happening in your church.
               </Text>
@@ -198,9 +179,7 @@ export default function HomeScreen({ navigation }) {
               <GlassCard style={styles.halfCard}>
                 <Text style={styles.cardKicker}>COMMUNITY</Text>
                 <Text style={styles.counterValue}>{nextEvents.length}</Text>
-                <Text style={styles.heroText}>
-                  Upcoming moments ready for your church family.
-                </Text>
+                <Text style={styles.heroText}>Upcoming moments ready for your church family.</Text>
               </GlassCard>
             </View>
 
@@ -267,104 +246,72 @@ export default function HomeScreen({ navigation }) {
           </View>
         </ScrollView>
 
-        <AIFab onPress={() => navigation.navigate("Live")} />
-
-        <PremiumScreen
-          visible={showPremium}
-          onClose={() => setShowPremium(false)}
-        />
+        {showPremium ? <PremiumScreen onClose={() => setShowPremium(false)} /> : null}
+        <AIFab />
       </SafeAreaView>
     </AmbientBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: {
+    flex: 1,
+  },
   container: {
     paddingHorizontal: 18,
     paddingTop: 16,
-    paddingBottom: 120,
+    paddingBottom: 140,
   },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 18,
-  },
-  kicker: { ...typography.kicker },
-  title: { ...typography.h2, marginTop: 8 },
-  logo: {
-    width: 58,
-    height: 58,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  logoFallback: {
-    width: 58,
-    height: 58,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: colors.stroke,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoFallbackText: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  upgradeCard: {
-    marginBottom: 14,
-    borderColor: "rgba(0,229,255,0.3)",
-  },
-  upgradeTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  upgradeText: {
-    color: colors.textSoft,
-    marginTop: 6,
-  },
-  upgradeButton: {
-    marginTop: 12,
-    backgroundColor: colors.cyan,
-    paddingVertical: 12,
-    borderRadius: 16,
-    alignItems: "center",
-  },
-  upgradeButtonText: {
-    color: "#000",
-    fontWeight: "800",
-  },
-  bento: { gap: 14 },
-  bentoRow: {
-    flexDirection: "row",
+  bento: {
     gap: 14,
   },
-  heroCard: { minHeight: 220 },
-  halfCard: { flex: 1 },
+  upgradeCard: {
+    marginBottom: 16,
+  },
+  upgradeTitle: {
+    ...typography.h3,
+  },
+  upgradeText: {
+    ...typography.body,
+    marginTop: 8,
+  },
+  upgradeButton: {
+    minHeight: 52,
+    borderRadius: radius.lg,
+    backgroundColor: colors.cyan,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 16,
+  },
+  upgradeButtonText: {
+    color: "#041217",
+    fontWeight: "900",
+    fontSize: 15,
+  },
+  heroCard: {
+    position: "relative",
+    overflow: "hidden",
+  },
   aiGlow: {
     position: "absolute",
+    right: -30,
     top: -20,
-    right: -20,
-    width: 150,
-    height: 150,
+    width: 140,
+    height: 140,
     borderRadius: 999,
-    backgroundColor: "rgba(124,58,237,0.20)",
+    backgroundColor: "rgba(34,211,238,0.18)",
   },
   liveBadge: {
+    minHeight: 32,
     alignSelf: "flex-start",
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: colors.stroke,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: colors.stroke,
   },
   liveDot: {
     width: 8,
@@ -374,27 +321,26 @@ const styles = StyleSheet.create({
   },
   liveBadgeText: {
     color: colors.text,
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-  },
-  cardKicker: { ...typography.kicker, color: colors.textSoft },
-  heroTitle: { ...typography.h2, marginTop: 14, maxWidth: 290 },
-  heroText: { ...typography.body, marginTop: 12 },
-  counterValue: {
-    color: colors.text,
-    fontSize: 32,
+    fontSize: 12,
     fontWeight: "900",
-    marginTop: 12,
+    letterSpacing: 1,
+  },
+  heroTitle: {
+    ...typography.h2,
+    marginTop: 16,
+  },
+  heroText: {
+    ...typography.body,
+    marginTop: 10,
   },
   ctaRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
     marginTop: 18,
   },
   ghostButton: {
-    flex: 1,
-    minHeight: 48,
+    minHeight: 46,
+    paddingHorizontal: 16,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.strokeStrong,
@@ -404,34 +350,94 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  ghostButtonText: { color: colors.text, fontWeight: "700" },
-  verseText: { ...typography.h3, marginTop: 10, lineHeight: 26 },
-  verseRef: { ...typography.meta, marginTop: 10, color: colors.cyan },
+  ghostButtonText: {
+    color: colors.text,
+    fontWeight: "800",
+  },
+  bentoRow: {
+    flexDirection: "row",
+    gap: 14,
+  },
+  halfCard: {
+    flex: 1,
+    minHeight: 160,
+  },
+  cardKicker: {
+    ...typography.kicker,
+  },
+  verseText: {
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: "700",
+    marginTop: 12,
+  },
+  verseRef: {
+    color: colors.cyan,
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: 12,
+  },
+  counterValue: {
+    color: colors.text,
+    fontSize: 36,
+    fontWeight: "900",
+    marginTop: 14,
+  },
   eventsCard: {},
+  emptyText: {
+    ...typography.body,
+    marginTop: 12,
+  },
+  eventRow: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  eventSpacing: {
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.stroke,
+  },
+  eventDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: colors.magenta,
+    marginTop: 6,
+  },
+  eventTitle: {
+    color: colors.text,
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  eventMeta: {
+    color: colors.textSoft,
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 4,
+  },
   liveHintCard: {},
-  emptyText: { ...typography.body, marginTop: 12 },
-  eventRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginTop: 14 },
-  eventSpacing: { paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.stroke },
-  eventDot: { width: 10, height: 10, borderRadius: 999, backgroundColor: colors.magenta, marginTop: 6 },
-  eventTitle: { color: colors.text, fontSize: 15, fontWeight: "800" },
-  eventMeta: { color: colors.textMuted, fontSize: 12, fontWeight: "600", marginTop: 4 },
   accountCard: {},
   accountName: {
     color: colors.text,
-    fontSize: 18,
-    fontWeight: "800",
+    fontSize: 20,
+    fontWeight: "900",
     marginTop: 10,
   },
   accountMeta: {
-    color: colors.textMuted,
-    marginTop: 6,
+    color: colors.textSoft,
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 4,
   },
   accountButtons: {
-    marginTop: 16,
-    gap: 10,
+    marginTop: 18,
+    gap: 12,
   },
   secondaryAction: {
-    minHeight: 48,
+    minHeight: 52,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.strokeStrong,
@@ -441,10 +447,11 @@ const styles = StyleSheet.create({
   },
   secondaryActionText: {
     color: colors.text,
-    fontWeight: "800",
+    fontWeight: "900",
+    fontSize: 15,
   },
   dangerAction: {
-    minHeight: 48,
+    minHeight: 52,
     borderRadius: radius.lg,
     backgroundColor: "rgba(255, 59, 48, 0.18)",
     borderWidth: 1,
@@ -454,7 +461,8 @@ const styles = StyleSheet.create({
   },
   dangerActionText: {
     color: "#ffb3ad",
-    fontWeight: "800",
+    fontWeight: "900",
+    fontSize: 15,
   },
   actionDisabled: {
     opacity: 0.65,

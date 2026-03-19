@@ -26,6 +26,9 @@ import { auth, db } from "../firebase/firebaseConfig";
 
 const AuthContext = createContext(null);
 
+const TRIAL_DAYS = 7;
+const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
+
 function makeChurchCode(churchName = "CHURCH") {
   const clean = String(churchName)
     .replace(/[^a-zA-Z0-9 ]/g, "")
@@ -37,6 +40,14 @@ function makeChurchCode(churchName = "CHURCH") {
 
   const random = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `${clean || "CHURCH"}-${random}`;
+}
+
+function toMillis(value) {
+  if (!value) return null;
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (typeof value?.toDate === "function") return value.toDate().getTime();
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 async function ensureFreshAuthSession(user) {
@@ -104,6 +115,8 @@ export function AuthProvider({ children }) {
     }
 
     const churchData = churchSnap.data();
+    const normalizedTrialEndsAt = toMillis(churchData.trialEndsAt);
+    const normalizedTrialStartedAt = toMillis(churchData.trialStartedAt);
 
     const normalizedTenant = {
       churchId: churchSnap.id,
@@ -113,7 +126,8 @@ export function AuthProvider({ children }) {
       plan: churchData.plan || "FREE",
       planStatus: churchData.planStatus || "ACTIVE",
       subscriptionStatus: churchData.subscriptionStatus || "INACTIVE",
-      trialEndsAt: churchData.trialEndsAt || null,
+      trialStartedAt: normalizedTrialStartedAt,
+      trialEndsAt: normalizedTrialEndsAt,
       memberCount: churchData.memberCount || 0,
       backgroundImageUrl: churchData.backgroundImageUrl || "",
       logoUrl: churchData.logoUrl || "",
@@ -162,7 +176,9 @@ export function AuthProvider({ children }) {
     if (!cleanChurchName) throw new Error("Church name is required.");
     if (!cleanFullName) throw new Error("Full name is required.");
     if (!cleanEmail) throw new Error("Email is required.");
-    if (!password || password.length < 6) throw new Error("Password must be at least 6 characters.");
+    if (!password || password.length < 6) {
+      throw new Error("Password must be at least 6 characters.");
+    }
 
     const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
     const uid = cred.user.uid;
@@ -171,6 +187,8 @@ export function AuthProvider({ children }) {
 
     const churchRef = doc(collection(db, "churches"));
     const churchCode = makeChurchCode(cleanChurchName);
+    const now = Date.now();
+    const trialEndsAt = now + TRIAL_MS;
 
     await setDoc(doc(db, "users", uid), {
       uid,
@@ -203,9 +221,10 @@ export function AuthProvider({ children }) {
       themePrimaryHex: "#0F172A",
       themeAccentHex: "#22D3EE",
       plan: "FREE",
-      planStatus: "ACTIVE",
-      subscriptionStatus: "INACTIVE",
-      trialEndsAt: null,
+      planStatus: "TRIAL",
+      subscriptionStatus: "TRIALING",
+      trialStartedAt: now,
+      trialEndsAt,
     });
 
     await setDoc(doc(db, "churches", churchRef.id, "members", uid), {
@@ -221,7 +240,7 @@ export function AuthProvider({ children }) {
     });
 
     await loadUserData(cred.user);
-    return { uid, churchId: churchRef.id, churchCode };
+    return { uid, churchId: churchRef.id, churchCode, trialEndsAt };
   }
 
   async function joinChurchAccount({
@@ -239,7 +258,9 @@ export function AuthProvider({ children }) {
     if (!code) throw new Error("Please enter the Church Code.");
     if (!cleanFullName) throw new Error("Please enter your full name.");
     if (!cleanEmail) throw new Error("Please enter your email.");
-    if (!password || password.length < 6) throw new Error("Password must be at least 6 characters.");
+    if (!password || password.length < 6) {
+      throw new Error("Password must be at least 6 characters.");
+    }
 
     const churchesRef = collection(db, "churches");
     const q = query(churchesRef, where("churchCode", "==", code));
@@ -291,9 +312,14 @@ export function AuthProvider({ children }) {
       return { uid, churchId };
     } catch (error) {
       if (error?.code === "auth/email-already-in-use") {
-        throw new Error("This email is already registered. Tap 'I Already Have Access' and log in instead.");
+        throw new Error(
+          "This email is already registered. Tap 'I Already Have Access' and log in instead."
+        );
       }
-      if (error?.code === "permission-denied" || error?.message?.includes("Missing or insufficient permissions")) {
+      if (
+        error?.code === "permission-denied" ||
+        error?.message?.includes("Missing or insufficient permissions")
+      ) {
         throw new Error("Permission denied while joining church. Publish the Firestore rules and try again.");
       }
       throw error;

@@ -5,12 +5,13 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./src/logo.jpg",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "scheme": "congregate",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./src/logo.jpg",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,
@@ -21,17 +22,25 @@
       }
     },
     "android": {
+      "package": "com.junior.congregate",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./src/logo.jpg",
+        "backgroundColor": "#000000"
       },
-      "edgeToEdgeEnabled": true,
-      "package": "com.junior.congregate"
+      "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./src/logo.jpg"
     },
+    "plugins": [
+      "react-native-purchases"
+    ],
     "extra": {
+      "revenueCat": {
+        "iosPublicSdkKey": "appl_REPLACE_LATER",
+        "androidPublicSdkKey": "goog_REPLACE_LATER",
+        "entitlementId": "pro"
+      },
       "eas": {
         "projectId": "5654f97c-0a92-4c40-9b4a-491182744880"
       }

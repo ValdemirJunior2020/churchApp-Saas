@@ -1,4 +1,4 @@
-// src/context/AppDataContext.js
+// File: src/context/AppDataContext.js
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -23,11 +23,7 @@ import { useAuth } from "./AuthContext";
 
 const AppDataContext = createContext(null);
 
-const STORAGE_KEYS = {
-  CONFIG: "@church_saas_config_v3",
-  MEMBERS: "@church_saas_members_v3",
-  EVENTS: "@church_saas_events_v3",
-};
+const STORAGE_PREFIX = "@church_saas_v4";
 
 const DEFAULT_CONFIG = {
   churchName: "Congregate",
@@ -40,6 +36,15 @@ const DEFAULT_CONFIG = {
   themePrimaryHex: "#0F172A",
   themeAccentHex: "#22D3EE",
 };
+
+function getStorageKeys(churchId = "guest") {
+  const id = String(churchId || "guest");
+  return {
+    CONFIG: `${STORAGE_PREFIX}:${id}:config`,
+    MEMBERS: `${STORAGE_PREFIX}:${id}:members`,
+    EVENTS: `${STORAGE_PREFIX}:${id}:events`,
+  };
+}
 
 function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
@@ -117,11 +122,17 @@ async function callApi({ resource, action, method = "GET", params = {}, body }) 
   url.searchParams.set("resource", resource);
   url.searchParams.set("action", action);
 
-  Object.entries(params || {}).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && String(v).length) url.searchParams.set(k, String(v));
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).length) {
+      url.searchParams.set(key, String(value));
+    }
   });
 
-  const init = method === "POST" ? { method: "POST", body: JSON.stringify(body || {}) } : { method: "GET" };
+  const init =
+    method === "POST"
+      ? { method: "POST", body: JSON.stringify(body || {}) }
+      : { method: "GET" };
+
   const res = await fetch(url.toString(), init);
   const text = await res.text();
 
@@ -138,6 +149,7 @@ async function callApi({ resource, action, method = "GET", params = {}, body }) 
 
 export function AppDataProvider({ children }) {
   const { tenant, profile } = useAuth();
+
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [members, setMembers] = useState([]);
   const [events, setEvents] = useState([]);
@@ -147,61 +159,124 @@ export function AppDataProvider({ children }) {
     GAS_URL && String(GAS_URL).includes("/macros/s/") && String(GAS_URL).includes("/exec")
   );
 
-  async function loadLocal() {
+  const currentChurchId = tenant?.churchId || "guest";
+
+  function resetTenantState() {
+    setConfig(DEFAULT_CONFIG);
+    setMembers([]);
+    setEvents([]);
+  }
+
+  async function loadLocal(churchId = currentChurchId) {
+    const keys = getStorageKeys(churchId);
+
     const [configRaw, membersRaw, eventsRaw] = await Promise.all([
-      AsyncStorage.getItem(STORAGE_KEYS.CONFIG),
-      AsyncStorage.getItem(STORAGE_KEYS.MEMBERS),
-      AsyncStorage.getItem(STORAGE_KEYS.EVENTS),
+      AsyncStorage.getItem(keys.CONFIG),
+      AsyncStorage.getItem(keys.MEMBERS),
+      AsyncStorage.getItem(keys.EVENTS),
     ]);
 
     setConfig(configRaw ? normalizeConfig(JSON.parse(configRaw)) : DEFAULT_CONFIG);
     setMembers(membersRaw ? JSON.parse(membersRaw).map(normalizeMember) : []);
     setEvents(eventsRaw ? sortEvents(JSON.parse(eventsRaw).map(normalizeEvent)) : []);
-    setReady(true);
   }
 
-  async function persist(partial = {}) {
+  async function persist(partial = {}, churchId = currentChurchId) {
+    const keys = getStorageKeys(churchId);
     const tasks = [];
-    if (partial.config) tasks.push(AsyncStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(normalizeConfig(partial.config))));
-    if (partial.members) tasks.push(AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(partial.members.map(normalizeMember))));
-    if (partial.events) tasks.push(AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(sortEvents(partial.events.map(normalizeEvent)))));
+
+    if (partial.config) {
+      tasks.push(
+        AsyncStorage.setItem(keys.CONFIG, JSON.stringify(normalizeConfig(partial.config)))
+      );
+    }
+
+    if (partial.members) {
+      tasks.push(
+        AsyncStorage.setItem(
+          keys.MEMBERS,
+          JSON.stringify((partial.members || []).map(normalizeMember))
+        )
+      );
+    }
+
+    if (partial.events) {
+      tasks.push(
+        AsyncStorage.setItem(
+          keys.EVENTS,
+          JSON.stringify(sortEvents((partial.events || []).map(normalizeEvent)))
+        )
+      );
+    }
+
     await Promise.all(tasks);
   }
 
   useEffect(() => {
-    loadLocal().catch(() => setReady(true));
-  }, []);
+    let active = true;
+
+    async function bootstrapTenant() {
+      try {
+        setReady(false);
+        resetTenantState();
+        await loadLocal(currentChurchId);
+      } catch {
+        resetTenantState();
+      } finally {
+        if (active) setReady(true);
+      }
+    }
+
+    bootstrapTenant();
+
+    return () => {
+      active = false;
+    };
+  }, [currentChurchId]);
 
   useEffect(() => {
     if (!tenant?.churchId) return undefined;
 
-    const churchRef = doc(db, "churches", tenant.churchId);
-    const membersRef = collection(db, "churches", tenant.churchId, "members");
-    const eventsRef = collection(db, "churches", tenant.churchId, "events");
+    const churchId = tenant.churchId;
+    const churchRef = doc(db, "churches", churchId);
+    const membersRef = collection(db, "churches", churchId, "members");
+    const eventsRef = collection(db, "churches", churchId, "events");
 
     const unsubChurch = onSnapshot(churchRef, async (snap) => {
       if (!snap.exists()) return;
       const next = normalizeConfig({ ...snap.data(), churchId: snap.id });
       setConfig(next);
-      await persist({ config: next });
+      await persist({ config: next }, churchId);
     });
 
     const unsubMembers = onSnapshot(membersRef, async (snap) => {
-      const nextMembers = snap.docs.map((item) => normalizeMember({ id: item.id, ...item.data() }));
+      const nextMembers = snap.docs.map((item) =>
+        normalizeMember({ id: item.id, ...item.data() })
+      );
       setMembers(nextMembers);
-      await persist({ members: nextMembers });
+      await persist({ members: nextMembers }, churchId);
     });
 
-    const unsubEvents = onSnapshot(query(eventsRef, orderBy("dateTimeISO", "asc")), async (snap) => {
-      const nextEvents = sortEvents(snap.docs.map((item) => normalizeEvent({ eventId: item.id, ...item.data() })));
-      setEvents(nextEvents);
-      await persist({ events: nextEvents });
-    }, async () => {
-      const fallback = await getDocs(eventsRef);
-      const nextEvents = sortEvents(fallback.docs.map((item) => normalizeEvent({ eventId: item.id, ...item.data() })));
-      setEvents(nextEvents);
-      await persist({ events: nextEvents });
-    });
+    const unsubEvents = onSnapshot(
+      query(eventsRef, orderBy("dateTimeISO", "asc")),
+      async (snap) => {
+        const nextEvents = sortEvents(
+          snap.docs.map((item) => normalizeEvent({ eventId: item.id, ...item.data() }))
+        );
+        setEvents(nextEvents);
+        await persist({ events: nextEvents }, churchId);
+      },
+      async () => {
+        const fallback = await getDocs(eventsRef);
+        const nextEvents = sortEvents(
+          fallback.docs.map((item) =>
+            normalizeEvent({ eventId: item.id, ...item.data() })
+          )
+        );
+        setEvents(nextEvents);
+        await persist({ events: nextEvents }, churchId);
+      }
+    );
 
     return () => {
       unsubChurch();
@@ -212,30 +287,38 @@ export function AppDataProvider({ children }) {
 
   async function refreshChurchData() {
     if (!tenant?.churchId) {
-      await loadLocal();
+      await loadLocal("guest");
       return;
     }
-    const churchRef = doc(db, "churches", tenant.churchId);
-    const membersRef = collection(db, "churches", tenant.churchId, "members");
-    const eventsRef = collection(db, "churches", tenant.churchId, "events");
+
+    const churchId = tenant.churchId;
+    const churchRef = doc(db, "churches", churchId);
+    const membersRef = collection(db, "churches", churchId, "members");
+    const eventsRef = collection(db, "churches", churchId, "events");
 
     const [churchDoc, membersSnap, eventsSnap] = await Promise.all([
       getDoc(churchRef),
       getDocs(membersRef),
       getDocs(eventsRef),
     ]);
+
     if (churchDoc.exists()) {
       const nextConfig = normalizeConfig({ ...churchDoc.data(), churchId: churchDoc.id });
       setConfig(nextConfig);
-      await persist({ config: nextConfig });
+      await persist({ config: nextConfig }, churchId);
     }
 
-    const nextMembers = membersSnap.docs.map((item) => normalizeMember({ id: item.id, ...item.data() }));
+    const nextMembers = membersSnap.docs.map((item) =>
+      normalizeMember({ id: item.id, ...item.data() })
+    );
     setMembers(nextMembers);
 
-    const nextEvents = sortEvents(eventsSnap.docs.map((item) => normalizeEvent({ eventId: item.id, ...item.data() })));
+    const nextEvents = sortEvents(
+      eventsSnap.docs.map((item) => normalizeEvent({ eventId: item.id, ...item.data() }))
+    );
     setEvents(nextEvents);
-    await persist({ members: nextMembers, events: nextEvents });
+
+    await persist({ members: nextMembers, events: nextEvents }, churchId);
   }
 
   async function setTenantCode(value) {
@@ -243,9 +326,15 @@ export function AppDataProvider({ children }) {
   }
 
   async function updateConfig(nextPatch) {
-    const nextConfig = normalizeConfig({ ...config, ...nextPatch, churchName: nextPatch?.churchName || config.churchName || tenant?.churchName || "Congregate" });
+    const nextConfig = normalizeConfig({
+      ...config,
+      ...nextPatch,
+      churchName:
+        nextPatch?.churchName || config.churchName || tenant?.churchName || "Congregate",
+    });
+
     setConfig(nextConfig);
-    await persist({ config: nextConfig });
+    await persist({ config: nextConfig }, currentChurchId);
 
     if (tenant?.churchId) {
       await setDoc(
@@ -266,7 +355,12 @@ export function AppDataProvider({ children }) {
       );
     } else if (apiEnabled) {
       try {
-        await callApi({ resource: "church", action: "save-config", method: "POST", body: nextConfig });
+        await callApi({
+          resource: "church",
+          action: "save-config",
+          method: "POST",
+          body: nextConfig,
+        });
       } catch {}
     }
 
@@ -280,7 +374,9 @@ export function AppDataProvider({ children }) {
   }
 
   async function removeDonationLink(donationId) {
-    const nextDonationLinks = (config.donationLinks || []).filter((item) => item.donationId !== donationId);
+    const nextDonationLinks = (config.donationLinks || []).filter(
+      (item) => item.donationId !== donationId
+    );
     return updateConfig({ donationLinks: nextDonationLinks });
   }
 
@@ -288,30 +384,47 @@ export function AppDataProvider({ children }) {
     const normalized = normalizeMember(member || {});
     const nextMembers = [...members, normalized];
     setMembers(nextMembers);
-    await persist({ members: nextMembers });
+    await persist({ members: nextMembers }, currentChurchId);
 
     if (tenant?.churchId) {
       const id = normalized.uid || normalized.id;
-      await setDoc(doc(db, "churches", tenant.churchId, "members", id), {
-        ...normalized,
-        updatedAt: serverTimestamp(),
-        addedBy: profile?.uid || null,
-      }, { merge: true });
+      await setDoc(
+        doc(db, "churches", tenant.churchId, "members", id),
+        {
+          ...normalized,
+          updatedAt: serverTimestamp(),
+          addedBy: profile?.uid || null,
+        },
+        { merge: true }
+      );
     }
   }
 
   async function updateMember(id, patch) {
-    const match = members.find((m) => String(m.id || m.uid) === String(id));
-    const nextMember = normalizeMember({ ...(match || {}), ...patch, id: match?.id || id });
-    const nextMembers = members.map((m) => (String(m.id || m.uid) === String(id) ? nextMember : m));
+    const match = members.find((item) => String(item.id || item.uid) === String(id));
+    const nextMember = normalizeMember({
+      ...(match || {}),
+      ...patch,
+      id: match?.id || id,
+    });
+
+    const nextMembers = members.map((item) =>
+      String(item.id || item.uid) === String(id) ? nextMember : item
+    );
+
     setMembers(nextMembers);
-    await persist({ members: nextMembers });
+    await persist({ members: nextMembers }, currentChurchId);
 
     if (tenant?.churchId) {
-      await setDoc(doc(db, "churches", tenant.churchId, "members", nextMember.uid || nextMember.id), {
-        ...nextMember,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      await setDoc(
+        doc(db, "churches", tenant.churchId, "members", nextMember.uid || nextMember.id),
+        {
+          ...nextMember,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
       if (nextMember.uid) {
         await updateDoc(doc(db, "users", nextMember.uid), {
           role: nextMember.role || "MEMBER",
@@ -324,13 +437,18 @@ export function AppDataProvider({ children }) {
   }
 
   async function deleteMember(id) {
-    const target = members.find((m) => String(m.id || m.uid) === String(id));
-    const nextMembers = members.filter((m) => String(m.id || m.uid) !== String(id));
+    const target = members.find((item) => String(item.id || item.uid) === String(id));
+    const nextMembers = members.filter(
+      (item) => String(item.id || item.uid) !== String(id)
+    );
+
     setMembers(nextMembers);
-    await persist({ members: nextMembers });
+    await persist({ members: nextMembers }, currentChurchId);
 
     if (tenant?.churchId && target) {
-      await deleteDoc(doc(db, "churches", tenant.churchId, "members", target.uid || target.id));
+      await deleteDoc(
+        doc(db, "churches", tenant.churchId, "members", target.uid || target.id)
+      );
     }
   }
 
@@ -341,23 +459,33 @@ export function AppDataProvider({ children }) {
   async function upsertEvent(eventInput) {
     const normalized = normalizeEvent(eventInput);
     const exists = events.some((evt) => evt.eventId === normalized.eventId);
+
     const nextEvents = exists
       ? events.map((evt) => (evt.eventId === normalized.eventId ? normalized : evt))
       : [...events, normalized];
 
     const sorted = sortEvents(nextEvents);
     setEvents(sorted);
-    await persist({ events: sorted });
+    await persist({ events: sorted }, currentChurchId);
 
     if (tenant?.churchId) {
-      await setDoc(doc(db, "churches", tenant.churchId, "events", normalized.eventId), {
-        ...normalized,
-        createdAt: normalized.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      await setDoc(
+        doc(db, "churches", tenant.churchId, "events", normalized.eventId),
+        {
+          ...normalized,
+          createdAt: normalized.createdAt || serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
     } else if (apiEnabled) {
       try {
-        await callApi({ resource: "events", action: exists ? "update" : "create", method: "POST", body: { event: normalized } });
+        await callApi({
+          resource: "events",
+          action: exists ? "update" : "create",
+          method: "POST",
+          body: { event: normalized },
+        });
       } catch {}
     }
 
@@ -367,7 +495,7 @@ export function AppDataProvider({ children }) {
   async function deleteEvent(eventId) {
     const nextEvents = events.filter((evt) => evt.eventId !== eventId);
     setEvents(nextEvents);
-    await persist({ events: nextEvents });
+    await persist({ events: nextEvents }, currentChurchId);
 
     if (tenant?.churchId) {
       await deleteDoc(doc(db, "churches", tenant.churchId, "events", eventId));

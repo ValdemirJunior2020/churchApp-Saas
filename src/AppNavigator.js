@@ -1,15 +1,17 @@
 // File: src/AppNavigator.js
 
-import React, { useContext } from "react";
+import React, { useContext, useMemo } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { useAuth } from "./context/AuthContext";
 import { useAppData } from "./context/AppDataContext";
 import { PurchasesContext } from "./context/PurchasesContext";
+import useChurchTheme from "./hooks/useChurchTheme";
 
 import WelcomeScreen from "./screens/auth/WelcomeScreen";
 import CreateChurchScreen from "./screens/auth/CreateChurchScreen";
@@ -34,17 +36,20 @@ import { colors } from "./theme";
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
-const navTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    background: colors.bg,
-    card: "#050507",
-    text: colors.text,
-    border: "rgba(255,255,255,0.10)",
-    primary: colors.cyan,
-  },
-};
+function buildNavTheme(churchTheme) {
+  return {
+    ...DarkTheme,
+    colors: {
+      ...DarkTheme.colors,
+      background: colors.bg,
+      card: churchTheme.navCard,
+      text: colors.text,
+      border: churchTheme.cardBorder,
+      primary: churchTheme.navPrimary,
+      notification: churchTheme.navPrimary,
+    },
+  };
+}
 
 function Loading() {
   return (
@@ -78,21 +83,75 @@ function memberIcon(routeName, focused) {
   if (routeName === "Live") return focused ? "radio" : "radio-outline";
   if (routeName === "Events") return focused ? "calendar" : "calendar-outline";
   if (routeName === "Chat") return focused ? "chatbubble" : "chatbubble-outline";
+  if (routeName === "Giving") return focused ? "heart" : "heart-outline";
   if (routeName === "Settings") return focused ? "settings" : "settings-outline";
-  return focused ? "heart" : "heart-outline";
+  return focused ? "ellipse" : "ellipse-outline";
+}
+
+function adminIcon(routeName, focused) {
+  if (routeName === "Dashboard") return focused ? "grid" : "grid-outline";
+  if (routeName === "Settings") return focused ? "settings" : "settings-outline";
+  if (routeName === "Events") return focused ? "calendar" : "calendar-outline";
+  if (routeName === "Chat") return focused ? "chatbubble" : "chatbubble-outline";
+  if (routeName === "Members") return focused ? "people" : "people-outline";
+  return focused ? "ellipse" : "ellipse-outline";
+}
+
+function useTabBarStyle() {
+  const insets = useSafeAreaInsets();
+  const churchTheme = useChurchTheme();
+
+  return useMemo(
+    () => ({
+      position: "absolute",
+      left: 10,
+      right: 10,
+      bottom: Math.max(10, insets.bottom + 6),
+      height: 72 + Math.max(0, insets.bottom - 4),
+      paddingTop: 8,
+      paddingBottom: Math.max(10, insets.bottom),
+      backgroundColor: churchTheme.tabBackground,
+      borderTopWidth: 1,
+      borderTopColor: churchTheme.tabBorder,
+      borderRadius: 28,
+      shadowColor: "#000",
+      shadowOpacity: 0.24,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 10,
+    }),
+    [insets.bottom, churchTheme.tabBackground, churchTheme.tabBorder]
+  );
 }
 
 function MemberTabs() {
+  const tabBarStyle = useTabBarStyle();
+  const churchTheme = useChurchTheme();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: colors.text,
-        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle,
+        tabBarActiveTintColor: churchTheme.tabActive,
+        tabBarInactiveTintColor: churchTheme.tabInactive,
         tabBarLabelStyle: styles.tabLabel,
+        tabBarItemStyle: styles.tabItem,
+        tabBarIconStyle: styles.tabIconWrap,
+        tabBarHideOnKeyboard: true,
         tabBarIcon: ({ color, focused, size }) => (
-          <Ionicons name={memberIcon(route.name, focused)} size={size} color={color} />
+          <View
+            style={[
+              styles.iconBubble,
+              focused && {
+                backgroundColor: churchTheme.chipBg,
+                borderColor: churchTheme.chipBorder,
+                shadowColor: churchTheme.navPrimary,
+              },
+            ]}
+          >
+            <Ionicons name={memberIcon(route.name, focused)} size={size} color={color} />
+          </View>
         ),
       })}
     >
@@ -106,25 +165,34 @@ function MemberTabs() {
   );
 }
 
-function adminIcon(routeName, focused) {
-  if (routeName === "Dashboard") return focused ? "grid" : "grid-outline";
-  if (routeName === "Settings") return focused ? "settings" : "settings-outline";
-  if (routeName === "Events") return focused ? "calendar" : "calendar-outline";
-  if (routeName === "Chat") return focused ? "chatbubble" : "chatbubble-outline";
-  return focused ? "people" : "people-outline";
-}
-
 function AdminTabs() {
+  const tabBarStyle = useTabBarStyle();
+  const churchTheme = useChurchTheme();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: colors.text,
-        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle,
+        tabBarActiveTintColor: churchTheme.tabActive,
+        tabBarInactiveTintColor: churchTheme.tabInactive,
         tabBarLabelStyle: styles.tabLabel,
+        tabBarItemStyle: styles.tabItem,
+        tabBarIconStyle: styles.tabIconWrap,
+        tabBarHideOnKeyboard: true,
         tabBarIcon: ({ color, focused, size }) => (
-          <Ionicons name={adminIcon(route.name, focused)} size={size} color={color} />
+          <View
+            style={[
+              styles.iconBubble,
+              focused && {
+                backgroundColor: churchTheme.chipBg,
+                borderColor: churchTheme.chipBorder,
+                shadowColor: churchTheme.navPrimary,
+              },
+            ]}
+          >
+            <Ionicons name={adminIcon(route.name, focused)} size={size} color={color} />
+          </View>
         ),
       })}
     >
@@ -141,6 +209,7 @@ export default function AppNavigator() {
   const { ready } = useAppData();
   const { tenant, isLoading, profile } = useAuth();
   const { isPro, loading: purchasesLoading } = useContext(PurchasesContext);
+  const churchTheme = useChurchTheme();
 
   if (isLoading || !ready || purchasesLoading) {
     return <Loading />;
@@ -148,21 +217,24 @@ export default function AppNavigator() {
 
   const effectiveRole = profile?.role || tenant?.role || "MEMBER";
   const isAdmin = effectiveRole === "ADMIN";
-  const shouldShowPaywall = Boolean(tenant) && isAdmin && !isPro;
+  const shouldShowPaywall = Boolean(tenant?.churchId) && isAdmin && !isPro;
+  const navKey = tenant?.churchId
+    ? `${tenant.churchId}:${effectiveRole}:${isPro ? "pro" : "free"}`
+    : "guest";
 
   return (
-    <NavigationContainer theme={navTheme}>
-      {!tenant ? (
-        <AuthStack />
-      ) : shouldShowPaywall ? (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <NavigationContainer theme={buildNavTheme(churchTheme)}>
+      <Stack.Navigator key={navKey} screenOptions={{ headerShown: false }}>
+        {!tenant?.churchId ? (
+          <Stack.Screen name="AuthFlow" component={AuthStack} />
+        ) : shouldShowPaywall ? (
           <Stack.Screen name="PaymentRequired" component={PaymentRequiredScreen} />
-        </Stack.Navigator>
-      ) : isAdmin ? (
-        <AdminTabs />
-      ) : (
-        <MemberTabs />
-      )}
+        ) : isAdmin ? (
+          <Stack.Screen name="AdminApp" component={AdminTabs} />
+        ) : (
+          <Stack.Screen name="MemberApp" component={MemberTabs} />
+        )}
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }
@@ -180,21 +252,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
-  tabBar: {
-    position: "absolute",
-    left: 10,
-    right: 10,
-    bottom: 10,
-    height: 72,
-    paddingTop: 8,
-    paddingBottom: 10,
-    backgroundColor: "rgba(10,10,12,0.92)",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
-    borderRadius: 28,
-  },
   tabLabel: {
     fontSize: 11,
     fontWeight: "700",
+    marginBottom: 2,
+  },
+  tabItem: {
+    paddingTop: 2,
+  },
+  tabIconWrap: {
+    marginTop: 2,
+  },
+  iconBubble: {
+    minWidth: 38,
+    height: 34,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "transparent",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
 });

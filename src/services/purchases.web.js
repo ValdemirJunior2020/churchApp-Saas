@@ -1,13 +1,11 @@
 // File: src/services/purchases.web.js
 
-export async function initPurchases(appUserID = null) {
-  return null;
+export async function initPurchases() {
+  return false;
 }
 
 export async function getOfferings() {
-  return {
-    availablePackages: [],
-  };
+  return null;
 }
 
 export async function getCustomerInfo() {
@@ -19,13 +17,9 @@ export async function getCustomerInfo() {
 }
 
 export async function purchasePackage() {
-  throw new Error("Purchases are not supported on web.");
+  throw new Error("RevenueCat purchases are only available in native iOS/Android builds.");
 }
 
 export async function restorePurchases() {
-  return {
-    entitlements: {
-      active: {},
-    },
-  };
+  throw new Error("RevenueCat restore is only available in native iOS/Android builds.");
 }

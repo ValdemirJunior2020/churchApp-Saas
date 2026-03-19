@@ -1,4 +1,4 @@
-// src/screens/admin/MemberManagerScreen.js
+// File: src/screens/admin/MemberManagerScreen.js
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -6,6 +6,7 @@ import {
   Alert,
   FlatList,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -15,7 +16,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import AmbientBackground from "../../components/AmbientBackground";
 import GlassCard from "../../components/GlassCard";
+import ChurchBrandHeader from "../../components/ChurchBrandHeader";
 import { useAppData } from "../../context/AppDataContext";
+import { useAuth } from "../../context/AuthContext";
 import { colors, radius, typography } from "../../theme";
 
 function getArray(value) {
@@ -33,96 +36,57 @@ function getDisplayName(member) {
 }
 
 function getDisplayEmail(member) {
-  return member?.email || member?.memberEmail || member?.login || "No email";
+  return member?.email || "No email";
 }
 
 function getDisplayPhone(member) {
-  return member?.phone || member?.mobile || member?.memberPhone || "";
+  return member?.phone || "";
 }
 
 function getDisplayRole(member) {
-  return member?.role || member?.userRole || "MEMBER";
+  return String(member?.role || "MEMBER").toUpperCase();
 }
 
 function getMemberId(member, index) {
-  return (
-    member?.id ||
-    member?.memberId ||
-    member?.userId ||
-    member?._id ||
-    `${getDisplayEmail(member)}-${index}`
-  );
+  return member?.id || member?.uid || member?.memberId || `member-${index}`;
 }
 
 export default function MemberManagerScreen() {
-  const appData = useAppData() || {};
+  const { tenant } = useAuth();
+  const { members, refreshMembers, updateMember, deleteMember, ready } = useAppData();
 
-  const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState(null);
 
-  const members = useMemo(() => {
-    const fromContext =
-      appData.members ||
-      appData.memberList ||
-      appData.users ||
-      appData.churchMembers ||
-      [];
+  const safeMembers = getArray(members);
 
-    return getArray(fromContext);
-  }, [appData]);
-
-  const refreshFn = useMemo(() => {
-    return (
-      appData.refreshMembers ||
-      appData.fetchMembers ||
-      appData.loadMembers ||
-      appData.getMembers ||
-      null
-    );
-  }, [appData]);
-
-  const updateFn = useMemo(() => {
-    return (
-      appData.updateMember ||
-      appData.editMember ||
-      appData.saveMember ||
-      appData.updateUser ||
-      null
-    );
-  }, [appData]);
-
-  const deleteFn = useMemo(() => {
-    return (
-      appData.deleteMember ||
-      appData.removeMember ||
-      appData.deleteUser ||
-      null
-    );
-  }, [appData]);
-
-  const loadMembers = useCallback(async () => {
-    if (typeof refreshFn !== "function") return;
+  const loadMembers = useCallback(async (mode = "refresh") => {
+    if (typeof refreshMembers !== "function") return;
 
     try {
-      setLoading(true);
-      await refreshFn();
+      if (mode === "initial") setInitialLoading(true);
+      if (mode === "refresh") setRefreshing(true);
+      await refreshMembers();
     } catch (error) {
       Alert.alert("Error", error?.message || "Could not load members.");
     } finally {
-      setLoading(false);
+      if (mode === "initial") setInitialLoading(false);
+      if (mode === "refresh") setRefreshing(false);
     }
-  }, [refreshFn]);
+  }, [refreshMembers]);
 
   useEffect(() => {
-    loadMembers();
-  }, [loadMembers]);
+    if (!ready) return;
+    loadMembers("initial");
+  }, [ready, tenant?.churchId, loadMembers]);
 
   const filteredMembers = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return members;
+    if (!q) return safeMembers;
 
-    return members.filter((member) => {
+    return safeMembers.filter((member) => {
       const haystack = [
         getDisplayName(member),
         getDisplayEmail(member),
@@ -134,21 +98,20 @@ export default function MemberManagerScreen() {
 
       return haystack.includes(q);
     });
-  }, [members, query]);
+  }, [safeMembers, query]);
 
   async function handlePromote(member, index) {
-    if (typeof updateFn !== "function") {
+    if (typeof updateMember !== "function") {
       Alert.alert("Unavailable", "updateMember is not available in AppDataContext yet.");
       return;
     }
 
-    const nextRole = getDisplayRole(member).toUpperCase() === "ADMIN" ? "MEMBER" : "ADMIN";
+    const nextRole = getDisplayRole(member) === "ADMIN" ? "MEMBER" : "ADMIN";
     const memberId = getMemberId(member, index);
 
     try {
       setBusyId(memberId);
-      await updateFn(memberId, { ...member, role: nextRole });
-      await loadMembers();
+      await updateMember(memberId, { ...member, role: nextRole });
     } catch (error) {
       Alert.alert("Error", error?.message || "Could not update member.");
     } finally {
@@ -157,40 +120,36 @@ export default function MemberManagerScreen() {
   }
 
   async function handleDelete(member, index) {
-    if (typeof deleteFn !== "function") {
+    if (typeof deleteMember !== "function") {
       Alert.alert("Unavailable", "deleteMember is not available in AppDataContext yet.");
       return;
     }
 
     const memberId = getMemberId(member, index);
 
-    Alert.alert(
-      "Delete member",
-      `Remove ${getDisplayName(member)} from the church?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setBusyId(memberId);
-              await deleteFn(memberId);
-              await loadMembers();
-            } catch (error) {
-              Alert.alert("Error", error?.message || "Could not delete member.");
-            } finally {
-              setBusyId(null);
-            }
-          },
+    Alert.alert("Delete member", `Remove ${getDisplayName(member)} from the church?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setBusyId(memberId);
+            await deleteMember(memberId);
+          } catch (error) {
+            Alert.alert("Error", error?.message || "Could not delete member.");
+          } finally {
+            setBusyId(null);
+          }
         },
-      ]
-    );
+      },
+    ]);
   }
 
   function renderMember({ item, index }) {
     const memberId = getMemberId(item, index);
     const isBusy = busyId === memberId;
+    const role = getDisplayRole(item);
 
     return (
       <GlassCard style={styles.card}>
@@ -208,7 +167,7 @@ export default function MemberManagerScreen() {
           </View>
 
           <View style={styles.rolePill}>
-            <Text style={styles.roleText}>{getDisplayRole(item)}</Text>
+            <Text style={styles.roleText}>{role}</Text>
           </View>
         </View>
 
@@ -220,7 +179,7 @@ export default function MemberManagerScreen() {
           >
             <Ionicons name="shield-checkmark-outline" size={16} color={colors.text} />
             <Text style={styles.actionText}>
-              {getDisplayRole(item).toUpperCase() === "ADMIN" ? "Make Member" : "Make Admin"}
+              {role === "ADMIN" ? "Make Member" : "Make Admin"}
             </Text>
           </Pressable>
 
@@ -239,15 +198,18 @@ export default function MemberManagerScreen() {
     );
   }
 
+  const isEmpty = !initialLoading && filteredMembers.length === 0;
+
   return (
     <AmbientBackground>
       <SafeAreaView style={styles.safe}>
         <View style={styles.container}>
-          <Text style={styles.kicker}>ADMIN</Text>
-          <Text style={styles.title}>Members</Text>
-          <Text style={styles.sub}>
-            Search, review roles, and manage church access without crashing if a context function is missing.
-          </Text>
+          <ChurchBrandHeader
+            title={tenant?.churchName || "Members"}
+            subtitle="Review your church members, promote leaders, and keep access clean."
+            centered
+            showChurchCode
+          />
 
           <GlassCard style={styles.searchCard}>
             <View style={styles.searchRow}>
@@ -259,47 +221,56 @@ export default function MemberManagerScreen() {
                 placeholderTextColor={colors.textMuted}
                 style={styles.input}
               />
-              <Pressable onPress={loadMembers} style={styles.refreshBtn}>
+              <Pressable onPress={() => loadMembers("refresh")} style={styles.refreshBtn}>
                 <Ionicons name="refresh-outline" size={18} color={colors.text} />
               </Pressable>
             </View>
           </GlassCard>
 
-          {loading ? (
+          {initialLoading ? (
             <View style={styles.loaderWrap}>
               <ActivityIndicator color={colors.cyan} />
               <Text style={styles.loaderText}>Loading members...</Text>
             </View>
-          ) : filteredMembers.length === 0 ? (
-            <GlassCard style={styles.emptyCard}>
-              <Ionicons name="people-outline" size={36} color={colors.textMuted} />
-              <Text style={styles.emptyTitle}>No members found</Text>
-              <Text style={styles.emptyText}>
-                {members.length === 0
-                  ? "Your context did not return any member records yet."
-                  : "Try another search term."}
-              </Text>
-
-              <View style={styles.debugBox}>
-                <Text style={styles.debugText}>
-                  refreshMembers: {typeof refreshFn === "function" ? "OK" : "missing"}
-                </Text>
-                <Text style={styles.debugText}>
-                  updateMember: {typeof updateFn === "function" ? "OK" : "missing"}
-                </Text>
-                <Text style={styles.debugText}>
-                  deleteMember: {typeof deleteFn === "function" ? "OK" : "missing"}
-                </Text>
-                <Text style={styles.debugText}>members found: {members.length}</Text>
-              </View>
-            </GlassCard>
           ) : (
             <FlatList
               data={filteredMembers}
               keyExtractor={(item, index) => String(getMemberId(item, index))}
               renderItem={renderMember}
-              contentContainerStyle={styles.listContent}
+              contentContainerStyle={[
+                styles.listContent,
+                isEmpty && styles.listContentEmpty,
+              ]}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={() => loadMembers("refresh")}
+                  tintColor={colors.cyan}
+                />
+              }
+              ListHeaderComponent={
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryText}>
+                    {safeMembers.length} total {safeMembers.length === 1 ? "member" : "members"}
+                  </Text>
+                  <Text style={styles.summaryText}>
+                    {filteredMembers.length} shown
+                  </Text>
+                </View>
+              }
+              ListEmptyComponent={
+                <GlassCard style={styles.emptyCard}>
+                  <Ionicons name="people-outline" size={36} color={colors.textMuted} />
+                  <Text style={styles.emptyTitle}>No members found</Text>
+                  <Text style={styles.emptyText}>
+                    {safeMembers.length === 0
+                      ? "No member records were returned for this church yet."
+                      : "Try another search term."}
+                  </Text>
+                </GlassCard>
+              }
             />
           )}
         </View>
@@ -318,19 +289,8 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 24,
   },
-  kicker: {
-    ...typography.kicker,
-  },
-  title: {
-    ...typography.h2,
-    marginTop: 8,
-  },
-  sub: {
-    ...typography.body,
-    marginTop: 8,
-    marginBottom: 14,
-  },
   searchCard: {
+    marginTop: 12,
     marginBottom: 12,
   },
   searchRow: {
@@ -366,9 +326,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+    gap: 10,
+  },
+  summaryText: {
+    color: colors.textSoft,
+    fontSize: 12,
+    fontWeight: "800",
+  },
   listContent: {
     paddingBottom: 120,
-    gap: 12,
+  },
+  listContentEmpty: {
+    flexGrow: 1,
+    justifyContent: "center",
   },
   card: {
     marginBottom: 12,
@@ -460,19 +435,5 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.body,
     marginTop: 8,
-  },
-  debugBox: {
-    marginTop: 16,
-    padding: 12,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.stroke,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    gap: 6,
-  },
-  debugText: {
-    color: colors.textSoft,
-    fontSize: 12,
-    fontWeight: "600",
   },
 });
