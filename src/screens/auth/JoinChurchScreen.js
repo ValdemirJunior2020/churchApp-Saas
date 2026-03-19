@@ -32,6 +32,14 @@ function normalizeCode(value) {
   return String(value || "").trim().toUpperCase();
 }
 
+function uiLog(label, payload) {
+  try {
+    console.log(`[JOIN_SCREEN] ${label}`, payload ?? "");
+  } catch {
+    console.log(`[JOIN_SCREEN] ${label}`);
+  }
+}
+
 export default function JoinChurchScreen({ navigation }) {
   const { joinChurchAccount } = useAuth();
 
@@ -41,6 +49,7 @@ export default function JoinChurchScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState("");
 
   const canSubmit = useMemo(() => {
     return (
@@ -53,10 +62,23 @@ export default function JoinChurchScreen({ navigation }) {
   }, [churchCode, fullName, phone, email, password]);
 
   async function handleSubmit() {
-    if (loading) return;
+    uiLog("handleSubmit:start", {
+      churchCode,
+      fullName,
+      phone,
+      email,
+      passwordLength: password.length,
+    });
+
+    if (loading) {
+      uiLog("handleSubmit:blockedBecauseLoading");
+      return;
+    }
 
     try {
       setLoading(true);
+      setStatusText("Checking church code...");
+      uiLog("handleSubmit:callingJoinChurchAccount");
 
       const result = await joinChurchAccount({
         churchCode: normalizeCode(churchCode),
@@ -66,6 +88,10 @@ export default function JoinChurchScreen({ navigation }) {
         password,
       });
 
+      uiLog("handleSubmit:joinSuccess", result);
+
+      setStatusText("Success. Your member account is ready.");
+
       Alert.alert(
         "Joined church",
         "Your member account was created successfully. You can now log in and access your church.",
@@ -73,6 +99,7 @@ export default function JoinChurchScreen({ navigation }) {
           {
             text: "Go to Login",
             onPress: () => {
+              uiLog("handleSubmit:navigateLogin");
               if (navigation?.navigate) {
                 navigation.navigate("Login");
               }
@@ -80,13 +107,13 @@ export default function JoinChurchScreen({ navigation }) {
           },
         ]
       );
-
-      console.log("Join success:", result);
     } catch (error) {
-      console.log("Join church error:", error);
+      console.log("[JOIN_SCREEN] handleSubmit:error", error);
+      setStatusText("");
       Alert.alert("Could not join church", error?.message || "Please try again.");
     } finally {
       setLoading(false);
+      uiLog("handleSubmit:finally");
     }
   }
 
@@ -119,10 +146,14 @@ export default function JoinChurchScreen({ navigation }) {
               <Text style={styles.label}>Church Code</Text>
               <TextInput
                 style={styles.input}
-                placeholder="VICWOR-AB12"
+                placeholder="APPCHU-WRJ3"
                 placeholderTextColor={colors.textMuted}
                 value={churchCode}
-                onChangeText={(value) => setChurchCode(normalizeCode(value))}
+                onChangeText={(value) => {
+                  const next = normalizeCode(value);
+                  uiLog("churchCode:onChange", next);
+                  setChurchCode(next);
+                }}
                 autoCapitalize="characters"
                 editable={!loading}
               />
@@ -133,7 +164,10 @@ export default function JoinChurchScreen({ navigation }) {
                 placeholder="Your full name"
                 placeholderTextColor={colors.textMuted}
                 value={fullName}
-                onChangeText={setFullName}
+                onChangeText={(value) => {
+                  uiLog("fullName:onChange", value);
+                  setFullName(value);
+                }}
                 editable={!loading}
               />
 
@@ -143,7 +177,11 @@ export default function JoinChurchScreen({ navigation }) {
                 placeholder="7543669922"
                 placeholderTextColor={colors.textMuted}
                 value={phone}
-                onChangeText={(value) => setPhone(sanitizePhone(value))}
+                onChangeText={(value) => {
+                  const next = sanitizePhone(value);
+                  uiLog("phone:onChange", next);
+                  setPhone(next);
+                }}
                 editable={!loading}
                 keyboardType="phone-pad"
               />
@@ -154,7 +192,10 @@ export default function JoinChurchScreen({ navigation }) {
                 placeholder="member@email.com"
                 placeholderTextColor={colors.textMuted}
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(value) => {
+                  uiLog("email:onChange", value);
+                  setEmail(value);
+                }}
                 editable={!loading}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -167,7 +208,10 @@ export default function JoinChurchScreen({ navigation }) {
                 placeholder="At least 6 characters"
                 placeholderTextColor={colors.textMuted}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(value) => {
+                  uiLog("password:onChange", { length: value.length });
+                  setPassword(value);
+                }}
                 editable={!loading}
                 secureTextEntry
                 autoCapitalize="none"
@@ -176,11 +220,17 @@ export default function JoinChurchScreen({ navigation }) {
 
               <Pressable
                 style={[styles.button, (!canSubmit || loading) && styles.buttonDisabled]}
-                onPress={handleSubmit}
+                onPress={() => {
+                  uiLog("joinButton:pressed", { canSubmit, loading });
+                  handleSubmit();
+                }}
                 disabled={!canSubmit || loading}
               >
                 {loading ? (
-                  <ActivityIndicator color="#041217" />
+                  <>
+                    <ActivityIndicator color="#041217" />
+                    <Text style={styles.buttonText}>Joining...</Text>
+                  </>
                 ) : (
                   <>
                     <Ionicons name="enter-outline" size={18} color="#041217" />
@@ -188,6 +238,8 @@ export default function JoinChurchScreen({ navigation }) {
                   </>
                 )}
               </Pressable>
+
+              {!!statusText && <Text style={styles.statusText}>{statusText}</Text>}
             </GlassCard>
 
             <GlassCard>
@@ -292,6 +344,13 @@ const styles = StyleSheet.create({
     color: "#041217",
     fontWeight: "900",
     fontSize: 15,
+  },
+  statusText: {
+    color: colors.textSoft,
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 12,
+    textAlign: "center",
   },
   tipRow: {
     flexDirection: "row",

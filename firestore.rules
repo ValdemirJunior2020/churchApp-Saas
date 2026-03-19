@@ -1,62 +1,96 @@
+// File: firestore.rules
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() {
+    function isSignedIn() {
       return request.auth != null;
     }
 
-    function userDoc() {
+    function currentUserDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    function sameChurch(churchId) {
-      return signedIn() && userDoc().data.churchId == churchId;
+    function belongsToChurch(churchId) {
+      return isSignedIn() &&
+        currentUserDoc().data.churchId == churchId;
     }
 
-    function isAdmin(churchId) {
-      return signedIn()
-        && userDoc().data.churchId == churchId
-        && userDoc().data.role in ['ADMIN', 'LEADER'];
+    function isChurchOwner(churchId) {
+      return isSignedIn() &&
+        (
+          get(/databases/$(database)/documents/churches/$(churchId)).data.ownerId == request.auth.uid ||
+          get(/databases/$(database)/documents/churches/$(churchId)).data.pastorId == request.auth.uid ||
+          get(/databases/$(database)/documents/churches/$(churchId)).data.createdBy == request.auth.uid
+        );
+    }
+
+    function isOwnUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     match /users/{userId} {
-      allow read: if signedIn() && request.auth.uid == userId;
-      allow create: if signedIn() && request.auth.uid == userId;
-      allow update: if signedIn() && request.auth.uid == userId;
-      allow delete: if false;
+      allow create: if isOwnUser(userId);
+      allow read: if isOwnUser(userId);
+      allow update: if isOwnUser(userId);
+      allow delete: if isOwnUser(userId);
     }
 
     match /churches/{churchId} {
-      allow read: if sameChurch(churchId);
-      allow create: if signedIn();
-      allow update: if isAdmin(churchId);
-      allow delete: if false;
+      // IMPORTANT:
+      // new members must be able to look up a church by code BEFORE login/account exists
+      allow read: if true;
+
+      allow create: if isSignedIn() &&
+        request.resource.data.ownerId == request.auth.uid;
+
+      allow update, delete: if isChurchOwner(churchId);
 
       match /members/{memberId} {
-        allow read: if sameChurch(churchId);
-        allow create: if signedIn() && (request.auth.uid == memberId || isAdmin(churchId));
-        allow update: if isAdmin(churchId);
-        allow delete: if isAdmin(churchId);
+        allow read: if belongsToChurch(churchId);
+
+        allow create: if isSignedIn() &&
+          request.auth.uid == memberId &&
+          request.resource.data.uid == request.auth.uid;
+
+        allow update: if belongsToChurch(churchId) &&
+          request.auth.uid == memberId;
+
+        allow delete: if isChurchOwner(churchId) ||
+          (belongsToChurch(churchId) && request.auth.uid == memberId);
       }
 
       match /events/{eventId} {
-        allow read: if sameChurch(churchId);
-        allow create, update, delete: if isAdmin(churchId);
+        allow read: if belongsToChurch(churchId);
+        allow create, update, delete: if isChurchOwner(churchId);
       }
 
       match /chatMessages/{messageId} {
-        allow read: if sameChurch(churchId);
-        allow create: if sameChurch(churchId)
-          && request.resource.data.senderId == request.auth.uid
-          && request.resource.data.churchId == churchId;
-        allow update, delete: if false;
+        allow read: if belongsToChurch(churchId);
+
+        allow create: if belongsToChurch(churchId) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.churchId == churchId;
+
+        allow update, delete: if isChurchOwner(churchId) ||
+          (belongsToChurch(churchId) && resource.data.senderId == request.auth.uid);
       }
 
-      match /announcements/{announcementId} {
-        allow read: if sameChurch(churchId);
-        allow create, update, delete: if isAdmin(churchId);
+      match /chat/{messageId} {
+        allow read: if belongsToChurch(churchId);
+
+        allow create: if belongsToChurch(churchId) &&
+          request.resource.data.uid == request.auth.uid;
+
+        allow update, delete: if isChurchOwner(churchId) ||
+          (belongsToChurch(churchId) && resource.data.uid == request.auth.uid);
       }
+    }
+
+    match /analytics/{docId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if false;
     }
   }
 }

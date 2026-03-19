@@ -32,9 +32,6 @@
     "web": {
       "favicon": "./src/logo.jpg"
     },
-    "plugins": [
-      "react-native-purchases"
-    ],
     "extra": {
       "revenueCat": {
         "iosPublicSdkKey": "appl_REPLACE_LATER",
