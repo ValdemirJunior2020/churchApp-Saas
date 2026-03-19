@@ -1,12 +1,11 @@
 // File: src/AppNavigator.js
 
 import React, { useContext, useMemo } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 
 import { useAuth } from "./context/AuthContext";
 import { useAppData } from "./context/AppDataContext";
@@ -35,6 +34,17 @@ import { colors } from "./theme";
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+
+const TAB_ICONS = {
+  Home: require("./assets/tab-icons/home.png"),
+  Live: require("./assets/tab-icons/live.png"),
+  Events: require("./assets/tab-icons/events.png"),
+  Chat: require("./assets/tab-icons/chat.png"),
+  Giving: require("./assets/tab-icons/giving.png"),
+  Settings: require("./assets/tab-icons/settings.png"),
+  Dashboard: require("./assets/tab-icons/home.png"),
+  Members: require("./assets/tab-icons/chat.png"),
+};
 
 function buildNavTheme(churchTheme) {
   return {
@@ -78,25 +88,6 @@ function AuthStack() {
   );
 }
 
-function memberIcon(routeName, focused) {
-  if (routeName === "Home") return focused ? "home" : "home-outline";
-  if (routeName === "Live") return focused ? "radio" : "radio-outline";
-  if (routeName === "Events") return focused ? "calendar" : "calendar-outline";
-  if (routeName === "Chat") return focused ? "chatbubble" : "chatbubble-outline";
-  if (routeName === "Giving") return focused ? "heart" : "heart-outline";
-  if (routeName === "Settings") return focused ? "settings" : "settings-outline";
-  return focused ? "ellipse" : "ellipse-outline";
-}
-
-function adminIcon(routeName, focused) {
-  if (routeName === "Dashboard") return focused ? "grid" : "grid-outline";
-  if (routeName === "Settings") return focused ? "settings" : "settings-outline";
-  if (routeName === "Events") return focused ? "calendar" : "calendar-outline";
-  if (routeName === "Chat") return focused ? "chatbubble" : "chatbubble-outline";
-  if (routeName === "Members") return focused ? "people" : "people-outline";
-  return focused ? "ellipse" : "ellipse-outline";
-}
-
 function useTabBarStyle() {
   const insets = useSafeAreaInsets();
   const churchTheme = useChurchTheme();
@@ -107,10 +98,10 @@ function useTabBarStyle() {
       left: 10,
       right: 10,
       bottom: Math.max(10, insets.bottom + 6),
-      height: 72 + Math.max(0, insets.bottom - 4),
+      height: 76 + Math.max(0, insets.bottom - 4),
       paddingTop: 8,
       paddingBottom: Math.max(10, insets.bottom),
-      backgroundColor: churchTheme.tabBackground,
+      backgroundColor: "rgba(20, 12, 24, 0.92)",
       borderTopWidth: 1,
       borderTopColor: churchTheme.tabBorder,
       borderRadius: 28,
@@ -120,7 +111,26 @@ function useTabBarStyle() {
       shadowOffset: { width: 0, height: 8 },
       elevation: 10,
     }),
-    [insets.bottom, churchTheme.tabBackground, churchTheme.tabBorder]
+    [insets.bottom, churchTheme.tabBorder]
+  );
+}
+
+function CustomTabIcon({ routeName, focused, churchTheme }) {
+  const source = TAB_ICONS[routeName];
+
+  return (
+    <View
+      style={[
+        styles.customIconWrap,
+        focused && {
+          backgroundColor: "rgba(22, 163, 74, 0.14)",
+          borderColor: churchTheme.navPrimary,
+          shadowColor: churchTheme.navPrimary,
+        },
+      ]}
+    >
+      <Image source={source} style={styles.customIconImage} resizeMode="contain" />
+    </View>
   );
 }
 
@@ -133,25 +143,17 @@ function MemberTabs() {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle,
-        tabBarActiveTintColor: churchTheme.tabActive,
-        tabBarInactiveTintColor: churchTheme.tabInactive,
+        tabBarActiveTintColor: "#56d4ff",
+        tabBarInactiveTintColor: "#f5f1ea",
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
-        tabBarIconStyle: styles.tabIconWrap,
         tabBarHideOnKeyboard: true,
-        tabBarIcon: ({ color, focused, size }) => (
-          <View
-            style={[
-              styles.iconBubble,
-              focused && {
-                backgroundColor: churchTheme.chipBg,
-                borderColor: churchTheme.chipBorder,
-                shadowColor: churchTheme.navPrimary,
-              },
-            ]}
-          >
-            <Ionicons name={memberIcon(route.name, focused)} size={size} color={color} />
-          </View>
+        tabBarIcon: ({ focused }) => (
+          <CustomTabIcon
+            routeName={route.name}
+            focused={focused}
+            churchTheme={churchTheme}
+          />
         ),
       })}
     >
@@ -174,25 +176,17 @@ function AdminTabs() {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle,
-        tabBarActiveTintColor: churchTheme.tabActive,
-        tabBarInactiveTintColor: churchTheme.tabInactive,
+        tabBarActiveTintColor: "#56d4ff",
+        tabBarInactiveTintColor: "#f5f1ea",
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
-        tabBarIconStyle: styles.tabIconWrap,
         tabBarHideOnKeyboard: true,
-        tabBarIcon: ({ color, focused, size }) => (
-          <View
-            style={[
-              styles.iconBubble,
-              focused && {
-                backgroundColor: churchTheme.chipBg,
-                borderColor: churchTheme.chipBorder,
-                shadowColor: churchTheme.navPrimary,
-              },
-            ]}
-          >
-            <Ionicons name={adminIcon(route.name, focused)} size={size} color={color} />
-          </View>
+        tabBarIcon: ({ focused }) => (
+          <CustomTabIcon
+            routeName={route.name}
+            focused={focused}
+            churchTheme={churchTheme}
+          />
         ),
       })}
     >
@@ -254,26 +248,27 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 11,
-    fontWeight: "700",
-    marginBottom: 2,
+    fontWeight: "800",
+    marginBottom: 3,
   },
   tabItem: {
     paddingTop: 2,
   },
-  tabIconWrap: {
-    marginTop: 2,
-  },
-  iconBubble: {
-    minWidth: 38,
-    height: 34,
-    paddingHorizontal: 8,
-    borderRadius: 14,
+  customIconWrap: {
+    minWidth: 62,
+    height: 42,
+    paddingHorizontal: 10,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "transparent",
     shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+  },
+  customIconImage: {
+    width: 34,
+    height: 34,
   },
 });
