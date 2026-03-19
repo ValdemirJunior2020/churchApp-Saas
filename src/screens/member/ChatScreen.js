@@ -13,7 +13,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import {
@@ -65,6 +64,7 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(true);
 
   const flatListRef = useRef(null);
+  const inputRef = useRef(null);
   const churchId = tenant?.churchId || "";
 
   const messagesRef = useMemo(() => {
@@ -79,6 +79,7 @@ export default function ChatScreen() {
       return undefined;
     }
 
+    console.log("[CHAT] subscribe:start", { churchId });
     setLoading(true);
 
     const q = query(messagesRef, orderBy("createdAt", "asc"));
@@ -90,6 +91,9 @@ export default function ChatScreen() {
           id: item.id,
           ...item.data(),
         }));
+
+        console.log("[CHAT] subscribe:success", { count: list.length });
+
         setMessages(list);
         setLoading(false);
 
@@ -98,7 +102,7 @@ export default function ChatScreen() {
         });
       },
       (error) => {
-        console.log("chat snapshot error", error);
+        console.log("[CHAT] subscribe:error", error);
         setLoading(false);
         Alert.alert(
           "Chat error",
@@ -107,13 +111,30 @@ export default function ChatScreen() {
       }
     );
 
-    return unsub;
-  }, [messagesRef]);
+    return () => {
+      console.log("[CHAT] subscribe:cleanup");
+      unsub();
+    };
+  }, [messagesRef, churchId]);
 
   async function handleSend() {
     const cleanMessage = String(message || "").trim();
 
-    if (!cleanMessage || sending || !churchId || !profile?.uid) return;
+    console.log("[CHAT] send:pressed", {
+      churchId,
+      uid: profile?.uid || null,
+      length: cleanMessage.length,
+    });
+
+    if (!cleanMessage || sending || !churchId || !profile?.uid) {
+      console.log("[CHAT] send:blocked", {
+        cleanMessage,
+        sending,
+        churchId,
+        uid: profile?.uid || null,
+      });
+      return;
+    }
 
     try {
       setSending(true);
@@ -128,6 +149,8 @@ export default function ChatScreen() {
         createdAt: serverTimestamp(),
       });
 
+      console.log("[CHAT] send:success");
+
       setMessage("");
       Keyboard.dismiss();
 
@@ -135,7 +158,7 @@ export default function ChatScreen() {
         flatListRef.current?.scrollToEnd?.({ animated: true });
       });
     } catch (error) {
-      console.log("chat send error", error);
+      console.log("[CHAT] send:error", error);
       Alert.alert(
         "Message failed",
         error?.message || "Could not send message."
@@ -191,100 +214,110 @@ export default function ChatScreen() {
   return (
     <AmbientBackground>
       <SafeAreaView style={styles.safe}>
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <KeyboardAvoidingView
-            style={styles.flex}
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-            keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
-          >
-            <View style={styles.container}>
-              <ChurchBrandHeader
-                title={config?.churchName || tenant?.churchName || "Church Chat"}
-                subtitle="Stay connected with your church family in real time."
-                centered
-                showChurchCode
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+        >
+          <View style={styles.container}>
+            <ChurchBrandHeader
+              title={config?.churchName || tenant?.churchName || "Church Chat"}
+              subtitle="Stay connected with your church family in real time."
+              centered
+              showChurchCode
+            />
+
+            <GlassCard style={styles.listCard}>
+              <View style={styles.listHeader}>
+                <View style={styles.listBadge}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.listBadgeText}>CHURCH CHAT</Text>
+                </View>
+
+                <Text style={styles.countText}>
+                  {messages.length} {messages.length === 1 ? "message" : "messages"}
+                </Text>
+              </View>
+
+              <FlatList
+                ref={flatListRef}
+                data={messages}
+                keyExtractor={(item) => item.id}
+                renderItem={renderItem}
+                ListEmptyComponent={renderEmpty}
+                contentContainerStyle={[
+                  styles.listContent,
+                  messages.length === 0 && styles.listContentEmpty,
+                ]}
+                keyboardShouldPersistTaps="always"
+                showsVerticalScrollIndicator={false}
+                onContentSizeChange={() => {
+                  flatListRef.current?.scrollToEnd?.({ animated: true });
+                }}
+              />
+            </GlassCard>
+
+            <GlassCard style={styles.inputCard}>
+              <Text style={styles.inputLabel}>New Message</Text>
+
+              <TextInput
+                ref={inputRef}
+                style={styles.input}
+                value={message}
+                onChangeText={(value) => {
+                  console.log("[CHAT] input:onChange", { length: value.length });
+                  setMessage(value);
+                }}
+                placeholder="Write a message to your church..."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                editable={!sending}
+                autoCorrect
+                autoCapitalize="sentences"
+                returnKeyType="default"
+                blurOnSubmit={false}
+                onFocus={() => console.log("[CHAT] input:focus")}
+                onBlur={() => console.log("[CHAT] input:blur")}
               />
 
-              <GlassCard style={styles.listCard}>
-                <View style={styles.listHeader}>
-                  <View style={styles.listBadge}>
-                    <View style={styles.liveDot} />
-                    <Text style={styles.listBadgeText}>CHURCH CHAT</Text>
-                  </View>
-
-                  <Text style={styles.countText}>
-                    {messages.length} {messages.length === 1 ? "message" : "messages"}
-                  </Text>
-                </View>
-
-                <FlatList
-                  ref={flatListRef}
-                  data={messages}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderItem}
-                  ListEmptyComponent={renderEmpty}
-                  contentContainerStyle={[
-                    styles.listContent,
-                    messages.length === 0 && styles.listContentEmpty,
-                  ]}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
-                  onContentSizeChange={() => {
-                    flatListRef.current?.scrollToEnd?.({ animated: true });
+              <View style={styles.actionRow}>
+                <Pressable
+                  style={styles.dismissButton}
+                  onPress={() => {
+                    console.log("[CHAT] hideKeyboard:pressed");
+                    Keyboard.dismiss();
                   }}
-                />
-              </GlassCard>
+                >
+                  <Ionicons name="chevron-down-outline" size={18} color={colors.text} />
+                  <Text style={styles.dismissButtonText}>Hide Keyboard</Text>
+                </Pressable>
 
-              <GlassCard style={styles.inputCard}>
-                <Text style={styles.inputLabel}>New Message</Text>
-
-                <TextInput
-                  style={styles.input}
-                  value={message}
-                  onChangeText={setMessage}
-                  placeholder="Write a message to your church..."
-                  placeholderTextColor={colors.textMuted}
-                  multiline
-                  returnKeyType="default"
-                  blurOnSubmit={false}
-                />
-
-                <View style={styles.actionRow}>
-                  <Pressable
-                    style={styles.dismissButton}
-                    onPress={Keyboard.dismiss}
-                  >
-                    <Ionicons name="chevron-down-outline" size={18} color={colors.text} />
-                    <Text style={styles.dismissButtonText}>Hide Keyboard</Text>
-                  </Pressable>
-
-                  <Pressable
+                <Pressable
+                  style={[
+                    styles.sendButton,
+                    (sending || !message.trim()) && styles.sendButtonDisabled,
+                  ]}
+                  onPress={handleSend}
+                  disabled={sending || !message.trim()}
+                >
+                  <Ionicons
+                    name="send-outline"
+                    size={18}
+                    color={(sending || !message.trim()) ? colors.textSoft : "#041217"}
+                  />
+                  <Text
                     style={[
-                      styles.sendButton,
-                      (sending || !message.trim()) && styles.sendButtonDisabled,
+                      styles.sendButtonText,
+                      (sending || !message.trim()) && styles.sendButtonTextDisabled,
                     ]}
-                    onPress={handleSend}
-                    disabled={sending || !message.trim()}
                   >
-                    <Ionicons
-                      name="send-outline"
-                      size={18}
-                      color={(sending || !message.trim()) ? colors.textSoft : "#041217"}
-                    />
-                    <Text
-                      style={[
-                        styles.sendButtonText,
-                        (sending || !message.trim()) && styles.sendButtonTextDisabled,
-                      ]}
-                    >
-                      {sending ? "Sending..." : "Send"}
-                    </Text>
-                  </Pressable>
-                </View>
-              </GlassCard>
-            </View>
-          </KeyboardAvoidingView>
-        </TouchableWithoutFeedback>
+                    {sending ? "Sending..." : "Send"}
+                  </Text>
+                </Pressable>
+              </View>
+            </GlassCard>
+          </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </AmbientBackground>
   );
