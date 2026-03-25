@@ -1,6 +1,6 @@
 // src/screens/admin/ChurchAdminSettingsScreen.js
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -26,6 +26,12 @@ const COLORS = {
   text: "#FFFFFF",
   muted: "rgba(255,255,255,0.72)",
   active: "#2ED8F3",
+  success: "#34D399",
+  successBg: "rgba(52,211,153,0.14)",
+  successBorder: "rgba(52,211,153,0.28)",
+  error: "#FF6B6B",
+  errorBg: "rgba(255,107,107,0.14)",
+  errorBorder: "rgba(255,107,107,0.28)",
   warning: "#F4C27A",
 };
 
@@ -53,11 +59,39 @@ function extractYoutubeVideoId(url = "") {
   return "";
 }
 
+function StatusBanner({ type, text, onClose }) {
+  if (!text) return null;
+
+  const isSuccess = type === "success";
+
+  return (
+    <View
+      style={[
+        styles.banner,
+        isSuccess ? styles.successBanner : styles.errorBanner,
+      ]}
+    >
+      <Ionicons
+        name={isSuccess ? "checkmark-circle-outline" : "alert-circle-outline"}
+        size={18}
+        color={isSuccess ? COLORS.success : COLORS.error}
+      />
+      <Text style={styles.bannerText}>{text}</Text>
+      <Pressable onPress={onClose} hitSlop={10}>
+        <Ionicons name="close" size={18} color={COLORS.text} />
+      </Pressable>
+    </View>
+  );
+}
+
 export default function ChurchAdminSettingsScreen() {
   const { tenant, profile, setTenant } = useAuth();
+  const scrollRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [statusType, setStatusType] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
 
   const [churchName, setChurchName] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
@@ -102,12 +136,16 @@ export default function ChurchAdminSettingsScreen() {
 
       try {
         setLoading(true);
+        setStatusType("");
+        setStatusMessage("");
 
         const snap = await getDoc(doc(db, "churches", churchId));
+
         if (!snap.exists()) {
           if (mounted) {
+            setStatusType("error");
+            setStatusMessage("Church settings document was not found.");
             setLoading(false);
-            Alert.alert("Missing church", "Church settings document was not found.");
           }
           return;
         }
@@ -136,7 +174,10 @@ export default function ChurchAdminSettingsScreen() {
         setInstagramUrl(data.instagramUrl || "");
       } catch (error) {
         console.log("churchAdminSettings:load:error", error);
-        Alert.alert("Load failed", error?.message || "Could not load church settings.");
+        if (mounted) {
+          setStatusType("error");
+          setStatusMessage(error?.message || "Could not load church settings.");
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -149,24 +190,40 @@ export default function ChurchAdminSettingsScreen() {
     };
   }, [churchId]);
 
+  function showSuccess(message) {
+    setStatusType("success");
+    setStatusMessage(message);
+    scrollRef.current?.scrollTo?.({ y: 0, animated: true });
+    Alert.alert("Saved", message);
+  }
+
+  function showError(message) {
+    setStatusType("error");
+    setStatusMessage(message);
+    scrollRef.current?.scrollTo?.({ y: 0, animated: true });
+    Alert.alert("Save failed", message);
+  }
+
   async function handleSave() {
     if (!churchId) {
-      Alert.alert("Missing church", "No active church was found for this account.");
+      showError("No active church was found for this account.");
       return;
     }
 
     if (!isAdmin) {
-      Alert.alert("Access denied", "Only pastors or admins can edit church settings.");
+      showError("Only pastors or admins can edit church settings.");
       return;
     }
 
     if (!churchName.trim()) {
-      Alert.alert("Missing church name", "Please enter the church name.");
+      showError("Please enter the church name.");
       return;
     }
 
     try {
       setSaving(true);
+      setStatusType("");
+      setStatusMessage("");
 
       const customDonationLinks = normalizeLinks(customDonationLinksText);
       const donationLinks = [
@@ -212,10 +269,10 @@ export default function ChurchAdminSettingsScreen() {
         }));
       }
 
-      Alert.alert("Saved", "Church settings were updated successfully.");
+      showSuccess("Your church settings have been saved successfully.");
     } catch (error) {
       console.log("churchAdminSettings:save:error", error);
-      Alert.alert("Save failed", error?.message || "Could not save church settings.");
+      showError(error?.message || "Could not save church settings.");
     } finally {
       setSaving(false);
     }
@@ -239,10 +296,20 @@ export default function ChurchAdminSettingsScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.container}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          <StatusBanner
+            type={statusType}
+            text={statusMessage}
+            onClose={() => {
+              setStatusType("");
+              setStatusMessage("");
+            }}
+          />
+
           <View style={styles.heroCard}>
             <View style={styles.heroIcon}>
               <Ionicons name="settings-outline" size={28} color={COLORS.active} />
@@ -467,7 +534,7 @@ export default function ChurchAdminSettingsScreen() {
           </Pressable>
 
           <Text style={styles.bottomHelp}>
-            After saving, your church home, giving, contact, and live screens can read these values directly from the church document.
+            From now on, every save should show both a visible banner and a popup confirmation.
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -499,6 +566,31 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 140,
     gap: 14,
+  },
+  banner: {
+    minHeight: 52,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  successBanner: {
+    backgroundColor: COLORS.successBg,
+    borderColor: COLORS.successBorder,
+  },
+  errorBanner: {
+    backgroundColor: COLORS.errorBg,
+    borderColor: COLORS.errorBorder,
+  },
+  bannerText: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: "800",
+    flex: 1,
+    lineHeight: 20,
   },
   heroCard: {
     backgroundColor: COLORS.card,

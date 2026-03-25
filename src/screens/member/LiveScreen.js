@@ -1,8 +1,10 @@
 // File: src/screens/member/LiveScreen.js
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,276 +14,257 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { WebView } from "react-native-webview";
-import AmbientBackground from "../../components/AmbientBackground";
-import GlassCard from "../../components/GlassCard";
-import ChurchBrandHeader from "../../components/ChurchBrandHeader";
-import { useAppData } from "../../context/AppDataContext";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../../firebase/firebaseConfig";
 import { useAuth } from "../../context/AuthContext";
-import { colors, radius, typography } from "../../theme";
-import { buildYouTubeEmbedUrl } from "../../utils/youtube";
+
+const COLORS = {
+  bg: "#05060A",
+  text: "#FFFFFF",
+  muted: "rgba(255,255,255,0.76)",
+  cyan: "#2ED8F3",
+  gold: "#F4C542",
+  border: "rgba(255,255,255,0.14)",
+  card: "rgba(8,10,16,0.68)",
+};
+
+function getYoutubeVideoId(url = "") {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  const shortMatch = value.match(/youtu\.be\/([^?&/]+)/i);
+  if (shortMatch?.[1]) return shortMatch[1];
+  const longMatch = value.match(/[?&]v=([^?&/]+)/i);
+  if (longMatch?.[1]) return longMatch[1];
+  const embedMatch = value.match(/embed\/([^?&/]+)/i);
+  if (embedMatch?.[1]) return embedMatch[1];
+  return "";
+}
 
 export default function LiveScreen() {
-  const { config } = useAppData();
-  const { tenant } = useAuth();
-  const [webLoading, setWebLoading] = useState(true);
-  const [reloadKey, setReloadKey] = useState(0);
+  const { tenant, profile } = useAuth();
 
-  const liveSource =
-    config?.youtubeUrl ||
-    config?.youtubeVideoId ||
-    tenant?.youtubeUrl ||
-    tenant?.youtubeVideoId ||
-    "";
+  const [churchData, setChurchData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const embedUrl = useMemo(() => buildYouTubeEmbedUrl(liveSource), [liveSource]);
+  const churchId = tenant?.churchId || profile?.churchId || null;
 
-  const hasLive = Boolean(embedUrl);
+  useEffect(() => {
+    if (!churchId) {
+      setChurchData(null);
+      setLoading(false);
+      return;
+    }
 
-  function handleReload() {
-    setWebLoading(true);
-    setReloadKey((prev) => prev + 1);
+    const churchRef = doc(db, "churches", churchId);
+
+    const unsubscribe = onSnapshot(
+      churchRef,
+      (snap) => {
+        setChurchData(snap.exists() ? snap.data() : null);
+        setLoading(false);
+      },
+      (error) => {
+        console.log("LiveScreen snapshot error:", error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [churchId]);
+
+  const churchName = churchData?.churchName || tenant?.churchName || profile?.churchName || "My Church";
+  const youtubeUrl = churchData?.youtubeUrl || tenant?.youtubeUrl || "";
+  const videoId = churchData?.youtubeVideoId || getYoutubeVideoId(youtubeUrl);
+  const embedUrl = useMemo(() => {
+    if (!videoId) return "";
+    return `https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1`;
+  }, [videoId]);
+
+  async function openOnYoutube() {
+    if (!youtubeUrl) return;
+    try {
+      await Linking.openURL(youtubeUrl);
+    } catch (error) {
+      console.log("openOnYoutube error:", error);
+    }
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.loaderWrap}>
+          <ActivityIndicator color={COLORS.cyan} />
+          <Text style={styles.loaderText}>Loading live stream...</Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
-    <AmbientBackground>
-      <SafeAreaView style={styles.safe}>
-        <ScrollView
-          contentContainerStyle={styles.container}
-          showsVerticalScrollIndicator={false}
-        >
-          <ChurchBrandHeader
-            title={config?.churchName || tenant?.churchName || "Live Worship"}
-            subtitle={
-              hasLive
-                ? "Watch your church stream right here inside the app."
-                : "Pastor can add a YouTube live URL in Admin Settings to activate this screen."
-            }
-            centered
-            showChurchCode
-          />
+    <SafeAreaView style={styles.safe}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <View style={styles.heroCard}>
+          <View style={styles.heroIcon}>
+            <Ionicons name="videocam-outline" size={30} color={COLORS.cyan} />
+          </View>
+          <Text style={styles.title}>Live Service</Text>
+          <Text style={styles.sub}>
+            Watch the current live stream for {churchName}.
+          </Text>
+        </View>
 
-          <GlassCard style={styles.heroCard}>
-            <View style={styles.statusRow}>
-              <View style={styles.statusBadge}>
-                <View
-                  style={[
-                    styles.statusDot,
-                    { backgroundColor: hasLive ? colors.success : colors.magenta },
-                  ]}
+        {!youtubeUrl || !videoId ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>No live stream yet</Text>
+            <Text style={styles.body}>
+              Add your YouTube live URL inside Admin Settings and it will appear here automatically.
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.playerCard}>
+              {Platform.OS === "web" ? (
+                <iframe
+                  title="Church Live Stream"
+                  src={embedUrl}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                  style={styles.iframe}
                 />
-                <Text style={styles.statusText}>
-                  {hasLive ? "LIVE PLAYER READY" : "LIVE NOT CONFIGURED"}
-                </Text>
-              </View>
-
-              {hasLive ? (
-                <Pressable style={styles.reloadButton} onPress={handleReload}>
-                  <Ionicons name="refresh-outline" size={16} color={colors.text} />
-                  <Text style={styles.reloadText}>Reload</Text>
-                </Pressable>
-              ) : null}
+              ) : (
+                <WebView
+                  source={{ uri: embedUrl }}
+                  style={styles.webview}
+                  javaScriptEnabled
+                  domStorageEnabled
+                  allowsInlineMediaPlayback
+                  mediaPlaybackRequiresUserAction={false}
+                />
+              )}
             </View>
 
-            {hasLive ? (
-              <>
-                <View style={styles.playerWrap}>
-                  {webLoading ? (
-                    <View style={styles.loadingOverlay}>
-                      <ActivityIndicator size="large" color={colors.cyan} />
-                      <Text style={styles.loadingText}>Loading live stream...</Text>
-                    </View>
-                  ) : null}
-
-                  <WebView
-                    key={reloadKey}
-                    source={{ uri: embedUrl }}
-                    style={styles.webview}
-                    allowsFullscreenVideo
-                    mediaPlaybackRequiresUserAction={false}
-                    javaScriptEnabled
-                    domStorageEnabled
-                    startInLoadingState
-                    onLoadStart={() => setWebLoading(true)}
-                    onLoadEnd={() => setWebLoading(false)}
-                    onError={() => setWebLoading(false)}
-                    setSupportMultipleWindows={false}
-                    originWhitelist={["*"]}
-                  />
-                </View>
-
-                <Text style={styles.helper}>
-                  This stream stays inside the app for members. If the pastor changes the YouTube
-                  URL in Admin Settings, this page will use the new link automatically.
-                </Text>
-              </>
-            ) : (
-              <View style={styles.emptyState}>
-                <Ionicons name="radio-outline" size={34} color={colors.cyan} />
-                <Text style={styles.emptyTitle}>Live stream is not set yet</Text>
-                <Text style={styles.emptyBody}>
-                  Go to Admin Settings and paste the church YouTube live link, watch URL, channel
-                  URL, or video URL. The app will convert it to an embedded player automatically.
-                </Text>
-              </View>
-            )}
-          </GlassCard>
-
-          <GlassCard>
-            <Text style={styles.sectionTitle}>What pastors should add</Text>
-
-            <View style={styles.tipRow}>
-              <Ionicons name="logo-youtube" size={18} color={colors.cyan} />
-              <Text style={styles.tipText}>A YouTube live URL or a normal YouTube video URL</Text>
-            </View>
-
-            <View style={styles.tipRow}>
-              <Ionicons name="checkmark-circle-outline" size={18} color={colors.cyan} />
-              <Text style={styles.tipText}>A church logo and background in Admin Settings</Text>
-            </View>
-
-            <View style={styles.tipRow}>
-              <Ionicons name="shield-checkmark-outline" size={18} color={colors.cyan} />
-              <Text style={styles.tipText}>
-                Members do not need to leave the app to watch the stream
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Watching in browser?</Text>
+              <Text style={styles.body}>
+                On web, the live video should render here using an embedded YouTube player. If the stream is blocked or behaves differently in the browser, use the button below to open YouTube directly.
               </Text>
+
+              <Pressable style={styles.youtubeButton} onPress={openOnYoutube}>
+                <Ionicons name="logo-youtube" size={18} color="#041217" />
+                <Text style={styles.youtubeButtonText}>Open on YouTube Live</Text>
+              </Pressable>
             </View>
-          </GlassCard>
-        </ScrollView>
-      </SafeAreaView>
-    </AmbientBackground>
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
+    backgroundColor: COLORS.bg,
   },
   container: {
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 140,
-    gap: 14,
+    padding: 16,
+    paddingBottom: 120,
   },
-  heroCard: {
-    overflow: "hidden",
-  },
-  statusRow: {
-    flexDirection: "row",
+  loaderWrap: {
+    flex: 1,
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 14,
+    justifyContent: "center",
+    gap: 10,
   },
-  statusBadge: {
-    minHeight: 34,
-    borderRadius: radius.pill,
-    paddingHorizontal: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: colors.stroke,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    flexShrink: 1,
-  },
-  statusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 999,
-  },
-  statusText: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 0.8,
-  },
-  reloadButton: {
-    minHeight: 34,
-    borderRadius: radius.pill,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: colors.strokeStrong,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  reloadText: {
-    color: colors.text,
-    fontSize: 13,
+  loaderText: {
+    color: COLORS.text,
+    fontSize: 15,
     fontWeight: "800",
   },
-  playerWrap: {
-    width: "100%",
-    aspectRatio: 16 / 9,
-    borderRadius: 22,
-    overflow: "hidden",
-    backgroundColor: "#000",
+  heroCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    position: "relative",
+    borderColor: COLORS.border,
+    padding: 18,
+    alignItems: "center",
+    marginBottom: 16,
   },
-  webview: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 2,
+  heroIcon: {
+    width: 68,
+    height: 68,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.28)",
-    gap: 10,
-  },
-  loadingText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  helper: {
-    ...typography.body,
-    marginTop: 14,
-  },
-  emptyState: {
-    minHeight: 220,
-    borderRadius: 22,
+    backgroundColor: "rgba(46,216,243,0.12)",
     borderWidth: 1,
-    borderColor: colors.stroke,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 22,
+    borderColor: "rgba(46,216,243,0.26)",
+    marginBottom: 14,
   },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: 21,
+  title: {
+    color: COLORS.text,
+    fontSize: 26,
     fontWeight: "900",
     textAlign: "center",
-    marginTop: 14,
   },
-  emptyBody: {
-    ...typography.body,
+  sub: {
+    color: COLORS.muted,
+    fontSize: 15,
     textAlign: "center",
-    marginTop: 10,
+    marginTop: 8,
+    lineHeight: 22,
+  },
+  playerCard: {
+    overflow: "hidden",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "#000000",
+    marginBottom: 16,
+  },
+  iframe: {
+    width: "100%",
+    height: 260,
+    border: "0",
+    display: "block",
+  },
+  webview: {
+    width: "100%",
+    height: 260,
+    backgroundColor: "#000000",
+  },
+  card: {
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    marginBottom: 14,
   },
   sectionTitle: {
-    ...typography.h3,
-    marginBottom: 12,
+    color: COLORS.gold,
+    fontSize: 18,
+    fontWeight: "900",
+    marginBottom: 10,
   },
-  tipRow: {
+  body: {
+    color: COLORS.text,
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  youtubeButton: {
+    marginTop: 14,
+    minHeight: 52,
+    borderRadius: 999,
+    backgroundColor: COLORS.cyan,
+    alignItems: "center",
+    justifyContent: "center",
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.stroke,
+    gap: 8,
   },
-  tipText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "700",
-    flex: 1,
-    lineHeight: 20,
+  youtubeButtonText: {
+    color: "#041217",
+    fontSize: 16,
+    fontWeight: "900",
   },
 });
