@@ -322,7 +322,7 @@ export default function TestimoniesScreen() {
                 <Text style={styles.submitText}>
                   {submitting ? "Posting..." : "Post Testimony"}
                 </Text>
-              </Press>
+              </Pressable>
 
               {!isPastorOrAdmin ? (
                 <Text style={styles.note}>
