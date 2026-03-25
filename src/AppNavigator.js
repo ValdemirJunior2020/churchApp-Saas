@@ -358,11 +358,25 @@ function FullScreenLoader() {
   );
 }
 
+const linking = {
+  prefixes: ["congregate://"],
+  config: {
+    screens: {
+      MemberTabs: {
+        screens: {
+          Live: "live",
+        },
+      },
+      ChurchPro: "church-pro",
+    },
+  },
+};
+
 export default function AppNavigator() {
   const { user, isLoading } = useAuth();
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       {isLoading ? <FullScreenLoader /> : user ? <AppStack /> : <AuthStack />}
     </NavigationContainer>
   );

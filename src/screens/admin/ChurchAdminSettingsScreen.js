@@ -18,6 +18,7 @@ import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { Ionicons } from "@expo/vector-icons";
 import { db } from "../../firebase/firebaseConfig";
 import { useAuth } from "../../context/AuthContext";
+import { extractYouTubeVideoId } from "../../utils/youtube";
 
 const COLORS = {
   bg: "#05060A",
@@ -47,12 +48,6 @@ function linksToText(value) {
   return "";
 }
 
-function extractVimeoId(url = "") {
-  const value = String(url || "").trim();
-  if (!value) return "";
-  const match = value.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
-  return match?.[1] || "";
-}
 
 function StatusBanner({ type, text, onClose }) {
   if (!text) return null;
@@ -91,7 +86,7 @@ export default function ChurchAdminSettingsScreen() {
   const [churchName, setChurchName] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [backgroundImageUrl, setBackgroundImageUrl] = useState("");
-  const [vimeoUrl, setVimeoUrl] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [paypalLink, setPaypalLink] = useState("");
   const [zelleInfo, setZelleInfo] = useState("");
   const [cashAppLink, setCashAppLink] = useState("");
@@ -153,7 +148,7 @@ export default function ChurchAdminSettingsScreen() {
         setChurchName(data.churchName || "");
         setLogoUrl(data.logoUrl || "");
         setBackgroundImageUrl(data.backgroundImageUrl || "");
-        setVimeoUrl(data.vimeoUrl || data.youtubeUrl || "");
+        setYoutubeUrl(data.youtubeUrl || data.youtubeVideoId || data.vimeoUrl || "");
         setPaypalLink(data.paypalLink || "");
         setZelleInfo(data.zelleInfo || "");
         setCashAppLink(data.cashAppLink || "");
@@ -216,10 +211,6 @@ export default function ChurchAdminSettingsScreen() {
       return;
     }
 
-    if (vimeoUrl.trim() && !extractVimeoId(vimeoUrl)) {
-      showError("Please enter a valid Vimeo URL. Only Vimeo links work for live video.");
-      return;
-    }
 
     try {
       setSaving(true);
@@ -237,10 +228,10 @@ export default function ChurchAdminSettingsScreen() {
         churchName: churchName.trim(),
         logoUrl: logoUrl.trim(),
         backgroundImageUrl: backgroundImageUrl.trim(),
-        vimeoUrl: vimeoUrl.trim(),
-        vimeoVideoId: extractVimeoId(vimeoUrl),
-        youtubeUrl: "",
-        youtubeVideoId: "",
+        youtubeUrl: youtubeUrl.trim(),
+        youtubeVideoId: extractYouTubeVideoId(youtubeUrl),
+        vimeoUrl: "",
+        vimeoVideoId: "",
         paypalLink: paypalLink.trim(),
         zelleInfo: zelleInfo.trim(),
         cashAppLink: cashAppLink.trim(),
@@ -268,7 +259,7 @@ export default function ChurchAdminSettingsScreen() {
           churchName: churchName.trim(),
           logoUrl: logoUrl.trim(),
           backgroundImageUrl: backgroundImageUrl.trim(),
-          vimeoUrl: vimeoUrl.trim(),
+          youtubeUrl: youtubeUrl.trim(),
         }));
       }
 
@@ -319,7 +310,7 @@ export default function ChurchAdminSettingsScreen() {
             </View>
             <Text style={styles.title}>Church Admin Settings</Text>
             <Text style={styles.sub}>
-              Update your church branding, giving options, Vimeo live stream, and contact information.
+              Update your church branding, giving options, YouTube live stream, and contact information.
             </Text>
           </View>
 
@@ -359,18 +350,18 @@ export default function ChurchAdminSettingsScreen() {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Live Stream</Text>
 
-            <Text style={styles.label}>Vimeo Live URL</Text>
+            <Text style={styles.label}>YouTube Live URL or Video ID</Text>
             <TextInput
               style={styles.input}
-              value={vimeoUrl}
-              onChangeText={setVimeoUrl}
-              placeholder="https://vimeo.com/123456789"
+              value={youtubeUrl}
+              onChangeText={setYoutubeUrl}
+              placeholder="https://www.youtube.com/watch?v=VIDEO_ID or VIDEO_ID"
               placeholderTextColor="rgba(255,255,255,0.45)"
               autoCapitalize="none"
             />
 
             <Text style={styles.helper}>
-              Only Vimeo links work for live video in this app right now.
+              Paste a direct YouTube watch URL or the 11-character video ID used by the live stream.
             </Text>
           </View>
 
