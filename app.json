@@ -4,12 +4,12 @@
     "slug": "church-saas",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./src/logo.jpg",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "scheme": "congregate",
     "newArchEnabled": true,
     "splash": {
-      "image": "./src/logo.jpg",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -24,13 +24,13 @@
     "android": {
       "package": "com.junior.congregate",
       "adaptiveIcon": {
-        "foregroundImage": "./src/logo.jpg",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./src/logo.jpg"
+      "favicon": "./assets/icon.png"
     },
     "extra": {
       "revenueCat": {
@@ -41,6 +41,9 @@
       "eas": {
         "projectId": "5654f97c-0a92-4c40-9b4a-491182744880"
       }
-    }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }

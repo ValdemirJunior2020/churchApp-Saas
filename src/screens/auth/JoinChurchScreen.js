@@ -90,23 +90,8 @@ export default function JoinChurchScreen({ navigation }) {
 
       uiLog("handleSubmit:joinSuccess", result);
 
-      setStatusText("Success. Your member account is ready.");
-
-      Alert.alert(
-        "Joined church",
-        "Your member account was created successfully. You can now log in and access your church.",
-        [
-          {
-            text: "Go to Login",
-            onPress: () => {
-              uiLog("handleSubmit:navigateLogin");
-              if (navigation?.navigate) {
-                navigation.navigate("Login");
-              }
-            },
-          },
-        ]
-      );
+      setStatusText("Success. Redirecting to your church...");
+      Alert.alert("Joined church", "Success. You are now connected to your church.");
     } catch (error) {
       console.log("[JOIN_SCREEN] handleSubmit:error", error);
       setStatusText("");

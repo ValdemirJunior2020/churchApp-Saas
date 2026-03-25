@@ -4,11 +4,7 @@ import React, { createContext, useEffect, useMemo, useState } from "react";
 import Constants from "expo-constants";
 import useDemoMode from "../hooks/useDemoMode";
 import { useAuth } from "./AuthContext";
-import {
-  initPurchases,
-  getOfferings,
-  getCustomerInfo,
-} from "../services/purchases";
+import { initPurchases, getOfferings, getCustomerInfo } from "../services/purchases";
 
 export const PurchasesContext = createContext({
   offerings: null,
@@ -32,6 +28,10 @@ function toMillis(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function hasProEntitlement(customerInfo) {
+  return Boolean(customerInfo?.entitlements?.active?.pro);
+}
+
 export function PurchasesProvider({ children }) {
   const { tenant, user } = useAuth();
   const [offerings, setOfferings] = useState(null);
@@ -50,10 +50,9 @@ export function PurchasesProvider({ children }) {
     }
 
     await initPurchases(user?.uid || null);
-
-    const currentOffering = await getOfferings();
-    const customerInfo = await getCustomerInfo();
-    const entitlementActive = Boolean(customerInfo?.entitlements?.active?.pro);
+    const currentOffering = await getOfferings(user?.uid || null);
+    const customerInfo = await getCustomerInfo(user?.uid || null);
+    const entitlementActive = hasProEntitlement(customerInfo);
 
     setOfferings(currentOffering);
     setIsPro(entitlementActive || trialActive);
@@ -74,7 +73,6 @@ export function PurchasesProvider({ children }) {
         }
 
         if (isRunningInExpoGo()) {
-          console.log("Expo Go detected. Skipping RevenueCat native purchase flow.");
           if (mounted) {
             setOfferings(null);
             setIsPro(true);
@@ -84,10 +82,9 @@ export function PurchasesProvider({ children }) {
         }
 
         await initPurchases(user?.uid || null);
-
-        const currentOffering = await getOfferings();
-        const customerInfo = await getCustomerInfo();
-        const entitlementActive = Boolean(customerInfo?.entitlements?.active?.pro);
+        const currentOffering = await getOfferings(user?.uid || null);
+        const customerInfo = await getCustomerInfo(user?.uid || null);
+        const entitlementActive = hasProEntitlement(customerInfo);
 
         if (mounted) {
           setOfferings(currentOffering);
@@ -100,9 +97,7 @@ export function PurchasesProvider({ children }) {
           setIsPro(trialActive);
         }
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     };
 
@@ -114,18 +109,15 @@ export function PurchasesProvider({ children }) {
     };
   }, [demo, user?.uid, tenant?.churchId, trialActive]);
 
-  const value = useMemo(
-    () => ({
-      offerings,
-      isPro,
-      loading,
-      trialActive,
-      trialEndsAt,
-      setIsPro,
-      refreshPurchases,
-    }),
-    [offerings, isPro, loading, trialActive, trialEndsAt]
-  );
+  const value = useMemo(() => ({
+    offerings,
+    isPro,
+    loading,
+    trialActive,
+    trialEndsAt,
+    setIsPro,
+    refreshPurchases,
+  }), [offerings, isPro, loading, trialActive, trialEndsAt]);
 
   return <PurchasesContext.Provider value={value}>{children}</PurchasesContext.Provider>;
 }

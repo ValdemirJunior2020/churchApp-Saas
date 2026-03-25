@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import {
   createUserWithEmailAndPassword,
   deleteUser,
+  fetchSignInMethodsForEmail,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
@@ -28,6 +29,7 @@ const AuthContext = createContext(null);
 
 const TRIAL_DAYS = 7;
 const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
+const SUPER_ADMIN_EMAILS = ["infojr.83@gmail.com", "super@admin.com", "adminjunior@admin.com"];
 
 function makeChurchCode(churchName = "CHURCH") {
   const clean = String(churchName)
@@ -118,7 +120,9 @@ export function AuthProvider({ children }) {
       fullName: userData.fullName || "",
       email: userData.email || "",
       phone: userData.phone || "",
-      role: userData.role || "MEMBER",
+      role: SUPER_ADMIN_EMAILS.includes((userData.email || user.email || "").toLowerCase())
+        ? "SUPER_ADMIN"
+        : (userData.role || "MEMBER"),
       churchId: userData.churchId || "",
       churchCode: userData.churchCode || "",
       createdAt: userData.createdAt || null,
@@ -346,7 +350,10 @@ export function AuthProvider({ children }) {
     });
 
     try {
-      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      const methods = await fetchSignInMethodsForEmail(auth, cleanEmail).catch(() => []);
+      const cred = methods?.length
+        ? await signInWithEmailAndPassword(auth, cleanEmail, password)
+        : await createUserWithEmailAndPassword(auth, cleanEmail, password);
       const uid = cred.user.uid;
 
       logStep("joinChurchAccount:firebaseAuthCreated", { uid, email: cleanEmail });
@@ -528,6 +535,7 @@ export function AuthProvider({ children }) {
       login,
       logout,
       deleteAccount,
+      isSuperAdmin: profile?.role === "SUPER_ADMIN",
     }),
     [firebaseUser, profile, tenant, isLoading]
   );

@@ -19,7 +19,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useAppData } from "../../context/AppDataContext";
 import { colors, radius, typography } from "../../theme";
 
-export default function MemberSettingsScreen() {
+export default function MemberSettingsScreen({ navigation }) {
   const { profile, tenant, logout, deleteAccount } = useAuth();
   const { config, donations, events } = useAppData();
   const [busy, setBusy] = useState(false);
@@ -171,6 +171,45 @@ export default function MemberSettingsScreen() {
               <Ionicons name="trash-outline" size={18} color="#ffb3ad" />
               <Text style={styles.dangerActionText}>Delete My Account</Text>
             </Pressable>
+          </GlassCard>
+
+          <GlassCard style={styles.section}>
+            <Text style={styles.sectionTitle}>Church Features</Text>
+            {(["ADMIN","SUPER_ADMIN"].includes(String(profile?.role || "").toUpperCase())) ? (
+              <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("PaymentRequired")}>
+                <Ionicons name="diamond-outline" size={18} color={colors.text} />
+                <Text style={styles.primaryActionText}>Church Pro / Subscription</Text>
+              </Pressable>
+            ) : null}
+
+            <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("NewHere")}>
+              <Ionicons name="hand-left-outline" size={18} color={colors.text} />
+              <Text style={styles.primaryActionText}>I'm New Here</Text>
+            </Pressable>
+            <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("Testimonies")}>
+              <Ionicons name="sparkles-outline" size={18} color={colors.text} />
+              <Text style={styles.primaryActionText}>Testimonies</Text>
+            </Pressable>
+            {(["ADMIN","SUPER_ADMIN"].includes(String(profile?.role || "").toUpperCase())) ? (
+              <>
+                <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("AdminSettings")}>
+                  <Ionicons name="settings-outline" size={18} color={colors.text} />
+                  <Text style={styles.primaryActionText}>Church Settings</Text>
+                </Pressable>
+                <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("AdminMembers")}>
+                  <Ionicons name="people-outline" size={18} color={colors.text} />
+                  <Text style={styles.primaryActionText}>Manage Members</Text>
+                </Pressable>
+                <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("AdminEvents")}>
+                  <Ionicons name="calendar-outline" size={18} color={colors.text} />
+                  <Text style={styles.primaryActionText}>Manage Events</Text>
+                </Pressable>
+                <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("PlatformAdmin")}>
+                  <Ionicons name="shield-outline" size={18} color={colors.text} />
+                  <Text style={styles.primaryActionText}>Platform Admin</Text>
+                </Pressable>
+              </>
+            ) : null}
           </GlassCard>
 
           <GlassCard style={styles.section}>

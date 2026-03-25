@@ -49,7 +49,7 @@ function getPackagePrice(pkg) {
 export default function PaymentRequiredScreen() {
   const { offerings, setIsPro, refreshPurchases, loading: purchasesLoading, trialEndsAt } =
     useContext(PurchasesContext);
-  const { tenant } = useAuth();
+  const { tenant, user } = useAuth();
 
   const [busy, setBusy] = useState(false);
 
@@ -73,7 +73,7 @@ export default function PaymentRequiredScreen() {
     try {
       setBusy(true);
 
-      const customerInfo = await purchasePackage(selectedPackage);
+      const customerInfo = await purchasePackage(selectedPackage, user?.uid || null);
       const hasPro = Boolean(customerInfo?.entitlements?.active?.pro);
 
       if (!hasPro) {
@@ -98,7 +98,7 @@ export default function PaymentRequiredScreen() {
     try {
       setBusy(true);
 
-      const customerInfo = await restorePurchases();
+      const customerInfo = await restorePurchases(user?.uid || null);
       const hasPro = Boolean(customerInfo?.entitlements?.active?.pro);
 
       if (!hasPro) {
@@ -204,7 +204,7 @@ export default function PaymentRequiredScreen() {
 
             {!selectedPackage && !purchasesLoading ? (
               <Text style={styles.warningText}>
-                No RevenueCat package was found. Check your offering and public iOS API key.
+                No RevenueCat package was found. Check your offering, entitlement mapping, and public iOS API key.
               </Text>
             ) : null}
           </GlassCard>
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 18,
-    paddingTop: 20,
+    paddingTop: 90,
     paddingBottom: 32,
     gap: 14,
     justifyContent: "center",

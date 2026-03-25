@@ -3,88 +3,71 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function currentUserDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid));
-    }
-
+    function isSignedIn() { return request.auth != null; }
+    function currentUserDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function userRole() { return isSignedIn() && currentUserDoc().exists() ? currentUserDoc().data.role : null; }
     function belongsToChurch(churchId) {
-      return isSignedIn() &&
-        currentUserDoc().data.churchId == churchId;
+      return isSignedIn() && currentUserDoc().exists() && currentUserDoc().data.churchId == churchId;
     }
-
+    function isSuperAdmin() {
+      return isSignedIn() && currentUserDoc().exists() && currentUserDoc().data.role == 'SUPER_ADMIN';
+    }
     function isChurchOwner(churchId) {
-      return isSignedIn() &&
-        (
-          get(/databases/$(database)/documents/churches/$(churchId)).data.ownerId == request.auth.uid ||
-          get(/databases/$(database)/documents/churches/$(churchId)).data.pastorId == request.auth.uid ||
-          get(/databases/$(database)/documents/churches/$(churchId)).data.createdBy == request.auth.uid
-        );
+      return isSuperAdmin() || (isSignedIn() && (
+        get(/databases/$(database)/documents/churches/$(churchId)).data.ownerId == request.auth.uid ||
+        get(/databases/$(database)/documents/churches/$(churchId)).data.pastorId == request.auth.uid ||
+        get(/databases/$(database)/documents/churches/$(churchId)).data.createdBy == request.auth.uid
+      ));
     }
-
-    function isOwnUser(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
+    function isOwnUser(userId) { return isSignedIn() && request.auth.uid == userId; }
 
     match /users/{userId} {
       allow create: if isOwnUser(userId);
-      allow read: if isOwnUser(userId);
-      allow update: if isOwnUser(userId);
-      allow delete: if isOwnUser(userId);
+      allow read: if isOwnUser(userId) || isSuperAdmin();
+      allow update: if isOwnUser(userId) || isSuperAdmin();
+      allow delete: if isOwnUser(userId) || isSuperAdmin();
     }
 
     match /churches/{churchId} {
-      // IMPORTANT:
-      // new members must be able to look up a church by code BEFORE login/account exists
       allow read: if true;
-
-      allow create: if isSignedIn() &&
-        request.resource.data.ownerId == request.auth.uid;
-
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
       allow update, delete: if isChurchOwner(churchId);
 
       match /members/{memberId} {
-        allow read: if belongsToChurch(churchId);
-
-        allow create: if isSignedIn() &&
-          request.auth.uid == memberId &&
-          request.resource.data.uid == request.auth.uid;
-
-        allow update: if belongsToChurch(churchId) &&
-          request.auth.uid == memberId;
-
-        allow delete: if isChurchOwner(churchId) ||
-          (belongsToChurch(churchId) && request.auth.uid == memberId);
+        allow read: if belongsToChurch(churchId) || isSuperAdmin();
+        allow create: if isSignedIn() && request.auth.uid == memberId && request.resource.data.uid == request.auth.uid;
+        allow update: if isChurchOwner(churchId) || (belongsToChurch(churchId) && request.auth.uid == memberId);
+        allow delete: if isChurchOwner(churchId) || (belongsToChurch(churchId) && request.auth.uid == memberId);
       }
 
       match /events/{eventId} {
-        allow read: if belongsToChurch(churchId);
+        allow read: if belongsToChurch(churchId) || isSuperAdmin();
         allow create, update, delete: if isChurchOwner(churchId);
       }
 
       match /chatMessages/{messageId} {
-        allow read: if belongsToChurch(churchId);
-
-        allow create: if belongsToChurch(churchId) &&
-          request.resource.data.senderId == request.auth.uid &&
-          request.resource.data.churchId == churchId;
-
-        allow update, delete: if isChurchOwner(churchId) ||
-          (belongsToChurch(churchId) && resource.data.senderId == request.auth.uid);
+        allow read: if belongsToChurch(churchId) || isSuperAdmin();
+        allow create: if belongsToChurch(churchId) && request.resource.data.senderId == request.auth.uid && request.resource.data.churchId == churchId;
+        allow update, delete: if isChurchOwner(churchId) || (belongsToChurch(churchId) && resource.data.senderId == request.auth.uid);
       }
 
-      match /chat/{messageId} {
-        allow read: if belongsToChurch(churchId);
+      match /prayerRequests/{prayerId} {
+        allow read: if belongsToChurch(churchId) || isSuperAdmin();
+        allow create: if belongsToChurch(churchId);
+        allow update, delete: if isChurchOwner(churchId);
+      }
 
-        allow create: if belongsToChurch(churchId) &&
-          request.resource.data.uid == request.auth.uid;
+      match /newGuests/{guestId} {
+        allow read: if isChurchOwner(churchId) || isSuperAdmin() || belongsToChurch(churchId);
+        allow create: if belongsToChurch(churchId);
+        allow update, delete: if isChurchOwner(churchId) || isSuperAdmin();
+      }
 
-        allow update, delete: if isChurchOwner(churchId) ||
-          (belongsToChurch(churchId) && resource.data.uid == request.auth.uid);
+      match /testimonies/{testimonyId} {
+        allow read: if belongsToChurch(churchId) || isSuperAdmin();
+        allow create: if belongsToChurch(churchId);
+        allow update: if isChurchOwner(churchId) || isSuperAdmin() || (belongsToChurch(churchId) && resource.data.uid == request.auth.uid);
+        allow delete: if isChurchOwner(churchId) || isSuperAdmin() || (belongsToChurch(churchId) && resource.data.uid == request.auth.uid);
       }
     }
 
