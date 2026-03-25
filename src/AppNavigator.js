@@ -18,8 +18,12 @@ import NewHereScreen from "./screens/member/NewHereScreen";
 import TestimoniesScreen from "./screens/member/TestimoniesScreen";
 
 import AuthEntryScreen from "./screens/auth/AuthEntryScreen";
+import JoinChurchScreen from "./screens/auth/JoinChurchScreen";
+import CreateChurchScreen from "./screens/auth/CreateChurchScreen";
 import PaymentRequiredScreen from "./screens/auth/PaymentRequiredScreen";
+
 import PlatformAdminScreen from "./screens/admin/PlatformAdminScreen";
+import ChurchAdminSettingsScreen from "./screens/admin/ChurchAdminSettingsScreen";
 
 import { useAuth } from "./context/AuthContext";
 
@@ -229,7 +233,7 @@ function MemberTabs({ navigation }) {
           headerRight: () =>
             isPastorOrAdmin ? (
               <HeaderRightButton
-                onPress={() => navigation.navigate("PlatformAdmin")}
+                onPress={() => navigation.navigate("ChurchAdminSettings")}
                 icon="settings-outline"
                 label="Admin"
               />
@@ -252,6 +256,8 @@ function AuthStack() {
       }}
     >
       <RootStack.Screen name="AuthEntry" component={AuthEntryScreen} />
+      <RootStack.Screen name="JoinChurch" component={JoinChurchScreen} />
+      <RootStack.Screen name="CreateChurch" component={CreateChurchScreen} />
     </RootStack.Navigator>
   );
 }
@@ -312,6 +318,24 @@ function AppStack() {
         name="PlatformAdmin"
         component={PlatformAdminScreen}
         options={{ title: "Platform Admin" }}
+      />
+
+      <RootStack.Screen
+        name="ChurchAdminSettings"
+        component={ChurchAdminSettingsScreen}
+        options={{ title: "Church Admin Settings" }}
+      />
+
+      <RootStack.Screen
+        name="JoinChurch"
+        component={JoinChurchScreen}
+        options={{ title: "Join Church" }}
+      />
+
+      <RootStack.Screen
+        name="CreateChurch"
+        component={CreateChurchScreen}
+        options={{ title: "Create Church" }}
       />
     </RootStack.Navigator>
   );

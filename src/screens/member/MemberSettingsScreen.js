@@ -1,3 +1,5 @@
+// src/screens/member/MemberSettingsScreen.js
+
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -41,6 +43,14 @@ export default function MemberSettingsScreen({ navigation }) {
   const { user, profile, tenant, logout, deleteAccount } = useAuth();
   const [busyAction, setBusyAction] = useState(null);
 
+  const role = String(profile?.role || "MEMBER").toUpperCase();
+  const isAdmin =
+    role === "ADMIN" ||
+    role === "OWNER" ||
+    role === "PASTOR" ||
+    role === "SUPERADMIN" ||
+    role === "SUPER_ADMIN";
+
   async function handleLogout() {
     if (busyAction) return;
 
@@ -82,7 +92,6 @@ export default function MemberSettingsScreen({ navigation }) {
     );
   }
 
-  const role = String(profile?.role || "MEMBER").toUpperCase();
   const isBusy = Boolean(busyAction);
 
   return (
@@ -111,8 +120,12 @@ export default function MemberSettingsScreen({ navigation }) {
 
           <View style={styles.infoBlock}>
             <Text style={styles.label}>Current Church</Text>
-            <Text style={styles.value}>{tenant?.churchName || profile?.churchName || "No church selected"}</Text>
-            <Text style={styles.helper}>Church Code: {tenant?.churchCode || profile?.churchCode || "-"}</Text>
+            <Text style={styles.value}>
+              {tenant?.churchName || profile?.churchName || "No church selected"}
+            </Text>
+            <Text style={styles.helper}>
+              Church Code: {tenant?.churchCode || profile?.churchCode || "-"}
+            </Text>
           </View>
         </View>
 
@@ -153,6 +166,15 @@ export default function MemberSettingsScreen({ navigation }) {
             onPress={() => navigation.navigate("ChurchPro")}
             disabled={isBusy}
           />
+
+          {isAdmin ? (
+            <ActionRow
+              title="Admin Settings"
+              subtitle="Edit logo, giving links, YouTube live, contact, and address"
+              onPress={() => navigation.navigate("ChurchAdminSettings")}
+              disabled={isBusy}
+            />
+          ) : null}
         </View>
 
         <View style={styles.card}>
