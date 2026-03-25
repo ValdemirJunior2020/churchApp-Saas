@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "congregate-church"
-  }
+    "default": "congregate-church",
+    "congregate": "congregate-church"
+  },
+  "targets": {},
+  "etags": {}
 }
