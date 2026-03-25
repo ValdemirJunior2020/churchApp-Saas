@@ -1,10 +1,7 @@
-// File: src/screens/member/LiveScreen.js
-
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
-  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -13,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { WebView } from "react-native-webview";
+import YoutubePlayer from "react-native-youtube-iframe";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase/firebaseConfig";
 import { useAuth } from "../../context/AuthContext";
@@ -26,17 +23,26 @@ const COLORS = {
   gold: "#F4C542",
   border: "rgba(255,255,255,0.14)",
   card: "rgba(8,10,16,0.68)",
+  error: "#FF6B6B",
 };
 
 function getYoutubeVideoId(url = "") {
   const value = String(url || "").trim();
   if (!value) return "";
-  const shortMatch = value.match(/youtu\.be\/([^?&/]+)/i);
-  if (shortMatch?.[1]) return shortMatch[1];
-  const longMatch = value.match(/[?&]v=([^?&/]+)/i);
-  if (longMatch?.[1]) return longMatch[1];
-  const embedMatch = value.match(/embed\/([^?&/]+)/i);
-  if (embedMatch?.[1]) return embedMatch[1];
+
+  const patterns = [
+    /[?&]v=([^?&/]+)/i,
+    /youtu\.be\/([^?&/]+)/i,
+    /youtube\.com\/embed\/([^?&/]+)/i,
+    /youtube\.com\/live\/([^?&/]+)/i,
+    /youtube\.com\/shorts\/([^?&/]+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = value.match(pattern);
+    if (match && match[1]) return match[1];
+  }
+
   return "";
 }
 
@@ -45,6 +51,7 @@ export default function LiveScreen() {
 
   const [churchData, setChurchData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [playerError, setPlayerError] = useState("");
 
   const churchId = tenant?.churchId || profile?.churchId || null;
 
@@ -72,20 +79,26 @@ export default function LiveScreen() {
     return () => unsubscribe();
   }, [churchId]);
 
-  const churchName = churchData?.churchName || tenant?.churchName || profile?.churchName || "My Church";
-  const youtubeUrl = churchData?.youtubeUrl || tenant?.youtubeUrl || "";
-  const videoId = churchData?.youtubeVideoId || getYoutubeVideoId(youtubeUrl);
-  const embedUrl = useMemo(() => {
-    if (!videoId) return "";
-    return `https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1`;
-  }, [videoId]);
+  const churchName =
+    churchData?.churchName ||
+    tenant?.churchName ||
+    profile?.churchName ||
+    "My Church";
 
-  async function openOnYoutube() {
+  const youtubeUrl = churchData?.youtubeUrl || "";
+  const youtubeVideoId = useMemo(() => {
+    return churchData?.youtubeVideoId || getYoutubeVideoId(youtubeUrl);
+  }, [churchData?.youtubeVideoId, youtubeUrl]);
+
+  const hasYoutubeVideo = Boolean(youtubeVideoId);
+
+  async function openYoutubeExternally() {
     if (!youtubeUrl) return;
+
     try {
       await Linking.openURL(youtubeUrl);
     } catch (error) {
-      console.log("openOnYoutube error:", error);
+      console.log("openYoutubeExternally error:", error);
     }
   }
 
@@ -102,59 +115,78 @@ export default function LiveScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.heroCard}>
           <View style={styles.heroIcon}>
             <Ionicons name="videocam-outline" size={30} color={COLORS.cyan} />
           </View>
           <Text style={styles.title}>Live Service</Text>
           <Text style={styles.sub}>
-            Watch the current live stream for {churchName}.
+            Watch the current YouTube live stream for {churchName}.
           </Text>
         </View>
 
-        {!youtubeUrl || !videoId ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>No live stream yet</Text>
-            <Text style={styles.body}>
-              Add your YouTube live URL inside Admin Settings and it will appear here automatically.
-            </Text>
-          </View>
-        ) : (
+        {hasYoutubeVideo ? (
           <>
             <View style={styles.playerCard}>
-              {Platform.OS === "web" ? (
-                <iframe
-                  title="Church Live Stream"
-                  src={embedUrl}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  style={styles.iframe}
-                />
-              ) : (
-                <WebView
-                  source={{ uri: embedUrl }}
-                  style={styles.webview}
-                  javaScriptEnabled
-                  domStorageEnabled
-                  allowsInlineMediaPlayback
-                  mediaPlaybackRequiresUserAction={false}
-                />
-              )}
+              <YoutubePlayer
+                height={230}
+                play={false}
+                videoId={youtubeVideoId}
+                initialPlayerParams={{
+                  controls: true,
+                  modestbranding: true,
+                  rel: false,
+                  playsinline: true,
+                }}
+                onError={(error) => {
+                  console.log("YouTube player error:", error);
+                  setPlayerError(
+                    "The YouTube player could not load this stream inside the app."
+                  );
+                }}
+              />
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Watching in browser?</Text>
+              <Text style={styles.sectionTitle}>YouTube Live</Text>
               <Text style={styles.body}>
-                On web, the live video should render here using an embedded YouTube player. If the stream is blocked or behaves differently in the browser, use the button below to open YouTube directly.
+                Your iPhone app can play the stream directly inside the screen.
               </Text>
 
-              <Pressable style={styles.youtubeButton} onPress={openOnYoutube}>
+              {playerError ? (
+                <Text style={styles.errorText}>{playerError}</Text>
+              ) : null}
+
+              <Pressable style={styles.primaryButton} onPress={openYoutubeExternally}>
                 <Ionicons name="logo-youtube" size={18} color="#041217" />
-                <Text style={styles.youtubeButtonText}>Open on YouTube Live</Text>
+                <Text style={styles.primaryButtonText}>Open on YouTube</Text>
               </Pressable>
             </View>
           </>
+        ) : (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>No valid YouTube video found</Text>
+            <Text style={styles.body}>
+              Save a direct YouTube live video URL like:
+              {"\n\n"}
+              https://www.youtube.com/watch?v=VIDEO_ID
+              {"\n"}
+              or
+              {"\n"}
+              https://youtu.be/VIDEO_ID
+            </Text>
+
+            {!!youtubeUrl && (
+              <Pressable style={styles.primaryButton} onPress={openYoutubeExternally}>
+                <Ionicons name="open-outline" size={18} color="#041217" />
+                <Text style={styles.primaryButtonText}>Open Saved Link</Text>
+              </Pressable>
+            )}
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -219,19 +251,10 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: "#000000",
+    backgroundColor: "#000",
     marginBottom: 16,
-  },
-  iframe: {
-    width: "100%",
-    height: 260,
-    border: "0",
-    display: "block",
-  },
-  webview: {
-    width: "100%",
-    height: 260,
-    backgroundColor: "#000000",
+    minHeight: 230,
+    justifyContent: "center",
   },
   card: {
     backgroundColor: COLORS.card,
@@ -252,7 +275,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 23,
   },
-  youtubeButton: {
+  errorText: {
+    color: COLORS.error,
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 12,
+  },
+  primaryButton: {
     marginTop: 14,
     minHeight: 52,
     borderRadius: 999,
@@ -262,7 +291,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  youtubeButtonText: {
+  primaryButtonText: {
     color: "#041217",
     fontSize: 16,
     fontWeight: "900",
