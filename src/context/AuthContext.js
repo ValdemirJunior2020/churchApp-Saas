@@ -1,5 +1,3 @@
-// File: src/context/AuthContext.js
-
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   createUserWithEmailAndPassword,
@@ -61,26 +59,15 @@ function logStep(label, payload) {
 }
 
 async function ensureFreshAuthSession(user) {
-  logStep("ensureFreshAuthSession:start", { uid: user?.uid || null });
-
   if (!user) {
-    logStep("ensureFreshAuthSession:error", "No user");
     throw new Error("Authentication session not available.");
   }
 
   await user.getIdToken(true);
 
-  logStep("ensureFreshAuthSession:tokenRefreshed", {
-    currentAuthUid: auth.currentUser?.uid || null,
-    expectedUid: user.uid,
-  });
-
   if (auth.currentUser?.uid !== user.uid) {
-    logStep("ensureFreshAuthSession:error", "Auth current user mismatch");
     throw new Error("Authentication session not ready yet. Please try again.");
   }
-
-  logStep("ensureFreshAuthSession:done", { uid: user.uid });
 }
 
 export function AuthProvider({ children }) {
@@ -93,71 +80,59 @@ export function AuthProvider({ children }) {
     logStep("loadUserData:start", { uid: user?.uid || null, email: user?.email || null });
 
     if (!user) {
-      logStep("loadUserData:noUser");
       setProfile(null);
       setTenant(null);
       return;
     }
 
     const userRef = doc(db, "users", user.uid);
-    logStep("loadUserData:userDocRef", { path: `users/${user.uid}` });
-
     const userSnap = await getDoc(userRef);
-    logStep("loadUserData:userDocExists", { exists: userSnap.exists() });
 
     if (!userSnap.exists()) {
-      logStep("loadUserData:userDocMissing", { uid: user.uid });
       setProfile(null);
       setTenant(null);
       return;
     }
 
     const userData = userSnap.data();
-    logStep("loadUserData:userDocData", userData);
 
     const normalizedProfile = {
       uid: user.uid,
       fullName: userData.fullName || "",
-      email: userData.email || "",
+      email: userData.email || user.email || "",
       phone: userData.phone || "",
       role: SUPER_ADMIN_EMAILS.includes((userData.email || user.email || "").toLowerCase())
         ? "SUPER_ADMIN"
-        : (userData.role || "MEMBER"),
+        : userData.role || "MEMBER",
       churchId: userData.churchId || "",
       churchCode: userData.churchCode || "",
+      churchName: userData.churchName || "",
       createdAt: userData.createdAt || null,
       updatedAt: userData.updatedAt || null,
       ...userData,
     };
 
     setProfile(normalizedProfile);
-    logStep("loadUserData:profileSet", normalizedProfile);
 
     if (!normalizedProfile.churchId) {
-      logStep("loadUserData:noChurchIdOnProfile");
       setTenant(null);
       return;
     }
 
     const churchRef = doc(db, "churches", normalizedProfile.churchId);
-    logStep("loadUserData:churchDocRef", { path: `churches/${normalizedProfile.churchId}` });
-
     const churchSnap = await getDoc(churchRef);
-    logStep("loadUserData:churchDocExists", { exists: churchSnap.exists() });
 
     if (!churchSnap.exists()) {
-      logStep("loadUserData:churchDocMissing", { churchId: normalizedProfile.churchId });
       setTenant(null);
       return;
     }
 
     const churchData = churchSnap.data();
-    logStep("loadUserData:churchDocData", churchData);
 
-    const normalizedTenant = {
+    setTenant({
       churchId: churchSnap.id,
-      churchName: churchData.churchName || "",
-      churchCode: churchData.churchCode || "",
+      churchName: churchData.churchName || normalizedProfile.churchName || "",
+      churchCode: churchData.churchCode || normalizedProfile.churchCode || "",
       ownerId: churchData.ownerId || churchData.pastorId || churchData.createdBy || "",
       plan: churchData.plan || "FREE",
       planStatus: churchData.planStatus || "ACTIVE",
@@ -174,24 +149,24 @@ export function AuthProvider({ children }) {
       createdAt: churchData.createdAt || null,
       updatedAt: churchData.updatedAt || null,
       role: normalizedProfile.role || "MEMBER",
-    };
+    });
 
-    setTenant(normalizedTenant);
-    logStep("loadUserData:tenantSet", normalizedTenant);
+    logStep("loadUserData:done", { uid: user.uid, churchId: normalizedProfile.churchId });
   }
 
   useEffect(() => {
-    logStep("onAuthStateChanged:subscribe");
-
     const unsub = onAuthStateChanged(auth, async (user) => {
-      logStep("onAuthStateChanged:fired", {
-        uid: user?.uid || null,
-        email: user?.email || null,
-      });
-
       try {
         setIsLoading(true);
         setFirebaseUser(user);
+
+        if (!user) {
+          setProfile(null);
+          setTenant(null);
+          setIsLoading(false);
+          return;
+        }
+
         await loadUserData(user);
       } catch (error) {
         console.error("[AUTH] Auth load error:", error);
@@ -199,22 +174,13 @@ export function AuthProvider({ children }) {
         setTenant(null);
       } finally {
         setIsLoading(false);
-        logStep("onAuthStateChanged:done");
       }
     });
 
     return unsub;
   }, []);
 
-  async function createChurchAccount({
-    churchName,
-    email,
-    password,
-    fullName,
-    phone = "",
-  }) {
-    logStep("createChurchAccount:start", { churchName, email, fullName, phone });
-
+  async function createChurchAccount({ churchName, email, password, fullName, phone = "" }) {
     const cleanChurchName = String(churchName || "").trim();
     const cleanEmail = String(email || "").trim().toLowerCase();
     const cleanFullName = String(fullName || "").trim();
@@ -223,14 +189,10 @@ export function AuthProvider({ children }) {
     if (!cleanChurchName) throw new Error("Church name is required.");
     if (!cleanFullName) throw new Error("Full name is required.");
     if (!cleanEmail) throw new Error("Email is required.");
-    if (!password || password.length < 6) {
-      throw new Error("Password must be at least 6 characters.");
-    }
+    if (!password || password.length < 6) throw new Error("Password must be at least 6 characters.");
 
     const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
     const uid = cred.user.uid;
-
-    logStep("createChurchAccount:firebaseAuthCreated", { uid });
 
     await ensureFreshAuthSession(cred.user);
 
@@ -238,12 +200,6 @@ export function AuthProvider({ children }) {
     const churchCode = makeChurchCode(cleanChurchName);
     const now = Date.now();
     const trialEndsAt = now + TRIAL_MS;
-
-    logStep("createChurchAccount:churchPrepared", {
-      churchId: churchRef.id,
-      churchCode,
-      trialEndsAt,
-    });
 
     await setDoc(doc(db, "users", uid), {
       uid,
@@ -253,10 +209,10 @@ export function AuthProvider({ children }) {
       role: "ADMIN",
       churchId: churchRef.id,
       churchCode,
+      churchName: cleanChurchName,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    logStep("createChurchAccount:userDocSaved", { uid });
 
     await setDoc(churchRef, {
       churchId: churchRef.id,
@@ -282,7 +238,6 @@ export function AuthProvider({ children }) {
       trialStartedAt: now,
       trialEndsAt,
     });
-    logStep("createChurchAccount:churchDocSaved", { churchId: churchRef.id });
 
     await setDoc(doc(db, "churches", churchRef.id, "members", uid), {
       uid,
@@ -295,23 +250,22 @@ export function AuthProvider({ children }) {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    logStep("createChurchAccount:memberDocSaved", { churchId: churchRef.id, uid });
+
+    await setDoc(doc(db, "users", uid, "memberships", churchRef.id), {
+      churchId: churchRef.id,
+      churchName: cleanChurchName,
+      churchCode,
+      role: "ADMIN",
+      joinedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
 
     await loadUserData(cred.user);
-    logStep("createChurchAccount:done", { uid, churchId: churchRef.id, churchCode });
-
     return { uid, churchId: churchRef.id, churchCode, trialEndsAt };
   }
 
-  async function joinChurchAccount({
-    churchCode,
-    email,
-    password,
-    fullName,
-    phone = "",
-  }) {
-    logStep("joinChurchAccount:start", { churchCode, email, fullName, phone });
-
+  async function joinChurchAccount({ churchCode, email, password, fullName, phone = "" }) {
     const code = String(churchCode || "").trim().toUpperCase();
     const cleanEmail = String(email || "").trim().toLowerCase();
     const cleanFullName = String(fullName || "").trim();
@@ -320,20 +274,11 @@ export function AuthProvider({ children }) {
     if (!code) throw new Error("Please enter the Church Code.");
     if (!cleanFullName) throw new Error("Please enter your full name.");
     if (!cleanEmail) throw new Error("Please enter your email.");
-    if (!password || password.length < 6) {
-      throw new Error("Password must be at least 6 characters.");
-    }
-
-    logStep("joinChurchAccount:lookupChurchByCode", { code });
+    if (!password || password.length < 6) throw new Error("Password must be at least 6 characters.");
 
     const churchesRef = collection(db, "churches");
     const q = query(churchesRef, where("churchCode", "==", code));
     const snap = await getDocs(q);
-
-    logStep("joinChurchAccount:lookupResult", {
-      empty: snap.empty,
-      count: snap.size,
-    });
 
     if (snap.empty) {
       throw new Error("Church Code not found.");
@@ -343,97 +288,86 @@ export function AuthProvider({ children }) {
     const churchId = churchDoc.id;
     const churchData = churchDoc.data();
 
-    logStep("joinChurchAccount:churchFound", {
-      churchId,
-      churchName: churchData?.churchName || null,
-      churchCode: churchData?.churchCode || null,
-    });
-
     try {
       const methods = await fetchSignInMethodsForEmail(auth, cleanEmail).catch(() => []);
       const cred = methods?.length
         ? await signInWithEmailAndPassword(auth, cleanEmail, password)
         : await createUserWithEmailAndPassword(auth, cleanEmail, password);
-      const uid = cred.user.uid;
 
-      logStep("joinChurchAccount:firebaseAuthCreated", { uid, email: cleanEmail });
+      const uid = cred.user.uid;
 
       await ensureFreshAuthSession(cred.user);
 
-      logStep("joinChurchAccount:saveUserDoc:start", {
-        path: `users/${uid}`,
-        churchId,
-        churchCode: code,
-      });
+      await setDoc(
+        doc(db, "users", uid),
+        {
+          uid,
+          fullName: cleanFullName,
+          email: cleanEmail,
+          phone: cleanPhone,
+          role: "MEMBER",
+          churchId,
+          churchCode: code,
+          churchName: churchData?.churchName || "",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
-      await setDoc(doc(db, "users", uid), {
-        uid,
-        fullName: cleanFullName,
-        email: cleanEmail,
-        phone: cleanPhone,
-        role: "MEMBER",
-        churchId,
-        churchCode: code,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      await setDoc(
+        doc(db, "churches", churchId, "members", uid),
+        {
+          uid,
+          fullName: cleanFullName,
+          email: cleanEmail,
+          phone: cleanPhone,
+          role: "MEMBER",
+          joinedAt: serverTimestamp(),
+          status: "ACTIVE",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
-      logStep("joinChurchAccount:saveUserDoc:done", { uid });
-
-      logStep("joinChurchAccount:saveMemberDoc:start", {
-        path: `churches/${churchId}/members/${uid}`,
-      });
-
-      await setDoc(doc(db, "churches", churchId, "members", uid), {
-        uid,
-        fullName: cleanFullName,
-        email: cleanEmail,
-        phone: cleanPhone,
-        role: "MEMBER",
-        joinedAt: serverTimestamp(),
-        status: "ACTIVE",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      logStep("joinChurchAccount:saveMemberDoc:done", { uid, churchId });
+      await setDoc(
+        doc(db, "users", uid, "memberships", churchId),
+        {
+          churchId,
+          churchName: churchData?.churchName || "",
+          churchCode: code,
+          role: "MEMBER",
+          joinedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
       try {
-        logStep("joinChurchAccount:updateMemberCount:start", { churchId });
-
         await updateDoc(doc(db, "churches", churchId), {
           memberCount: increment(1),
           updatedAt: serverTimestamp(),
         });
-
-        logStep("joinChurchAccount:updateMemberCount:done", { churchId });
       } catch (countError) {
         console.log("[AUTH] joinChurchAccount:updateMemberCount:skipped", countError);
       }
 
-      logStep("joinChurchAccount:loadUserData:start", { uid });
-
       await loadUserData(cred.user);
-
-      logStep("joinChurchAccount:done", { uid, churchId });
-
       return { uid, churchId };
     } catch (error) {
       console.log("[AUTH] joinChurchAccount:error", error);
 
       if (error?.code === "auth/email-already-in-use") {
-        throw new Error(
-          "This email is already registered. Tap Login instead of joining again."
-        );
+        throw new Error("This email is already registered. Tap Login instead of joining again.");
       }
 
       if (
         error?.code === "permission-denied" ||
         error?.message?.includes("Missing or insufficient permissions")
       ) {
-        throw new Error(
-          "Firestore blocked the join flow. Publish the Firestore rules and try again."
-        );
+        throw new Error("Firestore blocked the join flow. Publish the Firestore rules and try again.");
       }
 
       throw error;
@@ -441,38 +375,26 @@ export function AuthProvider({ children }) {
   }
 
   async function login(email, password) {
-    logStep("login:start", { email });
-
     const cleanEmail = String(email || "").trim().toLowerCase();
     const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
-
-    logStep("login:firebaseSuccess", { uid: cred.user.uid });
-
     await loadUserData(cred.user);
-
-    logStep("login:done", { uid: cred.user.uid });
-
     return cred.user;
   }
 
   async function logout() {
-    logStep("logout:start", { uid: auth.currentUser?.uid || null });
-
-    await signOut(auth);
-    setFirebaseUser(null);
-    setProfile(null);
-    setTenant(null);
-
-    logStep("logout:done");
+    try {
+      setProfile(null);
+      setTenant(null);
+      setFirebaseUser(null);
+      await signOut(auth);
+      return true;
+    } catch (error) {
+      console.log("[AUTH] logout:error", error);
+      throw new Error(error?.message || "Could not log out right now. Please try again.");
+    }
   }
 
   async function deleteAccount() {
-    logStep("deleteAccount:start", {
-      currentUserUid: auth.currentUser?.uid || null,
-      role: profile?.role || null,
-      churchId: tenant?.churchId || null,
-    });
-
     const currentUser = auth.currentUser;
     const currentProfile = profile;
     const currentTenant = tenant;
@@ -481,47 +403,60 @@ export function AuthProvider({ children }) {
       throw new Error("No authenticated user found.");
     }
 
-    if (currentProfile.role === "ADMIN") {
-      throw new Error("Admin account deletion is blocked for now. Please transfer ownership first.");
+    const currentRole = String(currentProfile.role || "").toUpperCase();
+    if (["ADMIN", "SUPER_ADMIN", "OWNER", "PASTOR"].includes(currentRole)) {
+      throw new Error(
+        "This account cannot be deleted from the member screen. Please transfer ownership or use the admin panel first."
+      );
     }
 
-    const batch = writeBatch(db);
+    try {
+      const batch = writeBatch(db);
 
-    if (currentTenant?.churchId) {
-      batch.delete(doc(db, "churches", currentTenant.churchId, "members", currentUser.uid));
-      logStep("deleteAccount:memberDocQueuedForDelete", {
-        path: `churches/${currentTenant.churchId}/members/${currentUser.uid}`,
-      });
-
-      try {
+      if (currentTenant?.churchId) {
+        batch.delete(doc(db, "churches", currentTenant.churchId, "members", currentUser.uid));
         batch.update(doc(db, "churches", currentTenant.churchId), {
           memberCount: increment(-1),
           updatedAt: serverTimestamp(),
         });
-        logStep("deleteAccount:memberCountQueuedForUpdate", {
-          path: `churches/${currentTenant.churchId}`,
-        });
-      } catch (error) {
-        console.log("[AUTH] deleteAccount:memberCountUpdate:skipped", error);
       }
+
+      batch.delete(doc(db, "users", currentUser.uid));
+
+      try {
+        const membershipsRef = collection(db, "users", currentUser.uid, "memberships");
+        const membershipsSnap = await getDocs(membershipsRef);
+        membershipsSnap.forEach((membershipDoc) => {
+          batch.delete(membershipDoc.ref);
+        });
+      } catch (membershipError) {
+        console.log("[AUTH] deleteAccount:membershipsCleanup:skipped", membershipError);
+      }
+
+      await batch.commit();
+      await deleteUser(currentUser);
+
+      setFirebaseUser(null);
+      setProfile(null);
+      setTenant(null);
+
+      return true;
+    } catch (error) {
+      console.log("[AUTH] deleteAccount:error", error);
+
+      if (error?.code === "auth/requires-recent-login") {
+        throw new Error("For security, please log out, log back in, and then try Delete Account again.");
+      }
+
+      if (
+        error?.code === "permission-denied" ||
+        error?.message?.includes("Missing or insufficient permissions")
+      ) {
+        throw new Error("Firestore blocked the delete request. Deploy the latest Firestore rules and try again.");
+      }
+
+      throw new Error(error?.message || "Could not delete account right now. Please try again.");
     }
-
-    batch.delete(doc(db, "users", currentUser.uid));
-    logStep("deleteAccount:userDocQueuedForDelete", {
-      path: `users/${currentUser.uid}`,
-    });
-
-    await batch.commit();
-    logStep("deleteAccount:batchCommitted");
-
-    await deleteUser(currentUser);
-    logStep("deleteAccount:firebaseUserDeleted");
-
-    setFirebaseUser(null);
-    setProfile(null);
-    setTenant(null);
-
-    logStep("deleteAccount:done");
   }
 
   const value = useMemo(
@@ -530,6 +465,8 @@ export function AuthProvider({ children }) {
       profile,
       tenant,
       isLoading,
+      setProfile,
+      setTenant,
       createChurchAccount,
       joinChurchAccount,
       login,

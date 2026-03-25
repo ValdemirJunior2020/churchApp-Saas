@@ -1,6 +1,4 @@
-// File: src/screens/member/MemberSettingsScreen.js
-
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,59 +9,72 @@ import {
   Text,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import AmbientBackground from "../../components/AmbientBackground";
-import GlassCard from "../../components/GlassCard";
-import ChurchBrandHeader from "../../components/ChurchBrandHeader";
 import { useAuth } from "../../context/AuthContext";
-import { useAppData } from "../../context/AppDataContext";
-import { colors, radius, typography } from "../../theme";
+
+const COLORS = {
+  bg: "#05060A",
+  card: "rgba(22,22,28,0.88)",
+  border: "rgba(255,255,255,0.12)",
+  text: "#FFFFFF",
+  muted: "rgba(255,255,255,0.72)",
+  active: "#2ED8F3",
+  danger: "#FF6B6B",
+};
+
+function ActionRow({ title, subtitle, onPress, danger = false, disabled = false }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={[styles.rowButton, disabled && styles.disabled]}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.rowTitle, danger && { color: COLORS.danger }]}>{title}</Text>
+        {!!subtitle && <Text style={styles.rowSubtitle}>{subtitle}</Text>}
+      </View>
+      <Text style={styles.chevron}>›</Text>
+    </Pressable>
+  );
+}
 
 export default function MemberSettingsScreen({ navigation }) {
-  const { profile, tenant, logout, deleteAccount } = useAuth();
-  const { config, donations, events } = useAppData();
-  const [busy, setBusy] = useState(false);
-
-  const stats = useMemo(() => {
-    const donationCount = Array.isArray(donations) ? donations.length : 0;
-    const eventCount = Array.isArray(events) ? events.length : 0;
-
-    return {
-      donationCount,
-      eventCount,
-    };
-  }, [donations, events]);
+  const { user, profile, tenant, logout, deleteAccount } = useAuth();
+  const [busyAction, setBusyAction] = useState(null);
 
   async function handleLogout() {
-    if (busy) return;
+    if (busyAction) return;
 
     try {
-      setBusy(true);
+      setBusyAction("logout");
       await logout();
+      Alert.alert("Logged out", "You have been signed out.");
     } catch (error) {
-      Alert.alert("Error", error?.message || "Could not log out.");
+      Alert.alert("Log out failed", error?.message || "Could not log out.");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
   function handleDeleteAccount() {
+    if (busyAction) return;
+
     Alert.alert(
       "Delete account",
-      "This will permanently delete your member account and remove your church access. This cannot be undone.",
+      "This will permanently remove your member account and church access. This cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Delete",
+          text: "Delete account",
           style: "destructive",
           onPress: async () => {
             try {
-              setBusy(true);
+              setBusyAction("delete");
               await deleteAccount();
+              Alert.alert("Account deleted", "Your account has been permanently deleted.");
             } catch (error) {
-              Alert.alert("Error", error?.message || "Could not delete account.");
+              Alert.alert("Delete failed", error?.message || "Could not delete account.");
             } finally {
-              setBusy(false);
+              setBusyAction(null);
             }
           },
         },
@@ -71,262 +82,231 @@ export default function MemberSettingsScreen({ navigation }) {
     );
   }
 
+  const role = String(profile?.role || "MEMBER").toUpperCase();
+  const isBusy = Boolean(busyAction);
+
   return (
-    <AmbientBackground>
-      <SafeAreaView style={styles.safe}>
-        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-          <ChurchBrandHeader
-            title={config?.churchName || tenant?.churchName || "My Church"}
-            subtitle="Manage your member account clearly and safely."
-            centered
-            showChurchCode
-          />
+    <SafeAreaView style={styles.safe}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.card}>
+          <Text style={styles.title}>Me</Text>
+          <Text style={styles.subtitle}>Manage your account, church access, and app settings.</Text>
 
-          <View style={styles.statsRow}>
-            <GlassCard style={styles.statCard}>
-              <Ionicons name="calendar-outline" size={20} color={colors.cyan} />
-              <Text style={styles.statValue}>{stats.eventCount}</Text>
-              <Text style={styles.statLabel}>Events</Text>
-            </GlassCard>
-
-            <GlassCard style={styles.statCard}>
-              <Ionicons name="heart-outline" size={20} color={colors.cyan} />
-              <Text style={styles.statValue}>{stats.donationCount}</Text>
-              <Text style={styles.statLabel}>Giving Links</Text>
-            </GlassCard>
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Name</Text>
+            <Text style={styles.value}>
+              {profile?.fullName || user?.displayName || "Member"}
+            </Text>
           </View>
 
-          <GlassCard style={styles.section}>
-            <Text style={styles.sectionTitle}>My Account</Text>
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Email</Text>
+            <Text style={styles.value}>{profile?.email || user?.email || "-"}</Text>
+          </View>
 
-            <View style={styles.infoRow}>
-              <Ionicons name="person-outline" size={18} color={colors.cyan} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Name</Text>
-                <Text style={styles.infoValue}>{profile?.fullName || "Member"}</Text>
-              </View>
-            </View>
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Role</Text>
+            <Text style={styles.value}>{role}</Text>
+          </View>
 
-            <View style={styles.infoRow}>
-              <Ionicons name="mail-outline" size={18} color={colors.cyan} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Email</Text>
-                <Text style={styles.infoValue}>{profile?.email || "-"}</Text>
-              </View>
-            </View>
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Current Church</Text>
+            <Text style={styles.value}>{tenant?.churchName || profile?.churchName || "No church selected"}</Text>
+            <Text style={styles.helper}>Church Code: {tenant?.churchCode || profile?.churchCode || "-"}</Text>
+          </View>
+        </View>
 
-            <View style={styles.infoRow}>
-              <Ionicons name="business-outline" size={18} color={colors.cyan} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Church</Text>
-                <Text style={styles.infoValue}>
-                  {config?.churchName || tenant?.churchName || "-"}
-                </Text>
-              </View>
-            </View>
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Church Access</Text>
 
-            <View style={styles.infoRow}>
-              <Ionicons name="key-outline" size={18} color={colors.cyan} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Church Code</Text>
-                <Text style={styles.infoValue}>{tenant?.churchCode || "-"}</Text>
-              </View>
-            </View>
+          <ActionRow
+            title="Switch Church"
+            subtitle="Choose another church you belong to"
+            onPress={() => navigation.navigate("SwitchChurch")}
+            disabled={isBusy}
+          />
 
-            <View style={[styles.infoRow, styles.infoRowLast]}>
-              <Ionicons name="shield-checkmark-outline" size={18} color={colors.cyan} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Role</Text>
-                <Text style={styles.infoValue}>{String(profile?.role || "MEMBER").toUpperCase()}</Text>
-              </View>
-            </View>
-          </GlassCard>
+          <ActionRow
+            title="Join Another Church"
+            subtitle="Use a church code to connect to another church"
+            onPress={() => navigation.navigate("JoinChurch")}
+            disabled={isBusy}
+          />
 
-          <GlassCard style={styles.section}>
-            <Text style={styles.sectionTitle}>Account Actions</Text>
-            <Text style={styles.helper}>
-              These are the exact options Apple reviewers expect to find clearly inside the app.
-            </Text>
+          <ActionRow
+            title="I’m New Here"
+            subtitle="Submit your visitor information"
+            onPress={() => navigation.navigate("NewHere")}
+            disabled={isBusy}
+          />
 
-            <Pressable
-              style={[styles.primaryAction, busy && styles.actionDisabled]}
-              onPress={handleLogout}
-              disabled={busy}
-            >
-              {busy ? (
-                <ActivityIndicator color={colors.text} />
-              ) : (
-                <>
-                  <Ionicons name="log-out-outline" size={18} color={colors.text} />
-                  <Text style={styles.primaryActionText}>Log Out</Text>
-                </>
-              )}
-            </Pressable>
+          <ActionRow
+            title="Testimonies"
+            subtitle="Read and post testimonies"
+            onPress={() => navigation.navigate("Testimonies")}
+            disabled={isBusy}
+          />
 
-            <Pressable
-              style={[styles.dangerAction, busy && styles.actionDisabled]}
-              onPress={handleDeleteAccount}
-              disabled={busy}
-            >
-              <Ionicons name="trash-outline" size={18} color="#ffb3ad" />
-              <Text style={styles.dangerActionText}>Delete My Account</Text>
-            </Pressable>
-          </GlassCard>
+          <ActionRow
+            title="Church Pro"
+            subtitle="Open subscription and access screen"
+            onPress={() => navigation.navigate("ChurchPro")}
+            disabled={isBusy}
+          />
+        </View>
 
-          <GlassCard style={styles.section}>
-            <Text style={styles.sectionTitle}>Church Features</Text>
-            {(["ADMIN","SUPER_ADMIN"].includes(String(profile?.role || "").toUpperCase())) ? (
-              <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("PaymentRequired")}>
-                <Ionicons name="diamond-outline" size={18} color={colors.text} />
-                <Text style={styles.primaryActionText}>Church Pro / Subscription</Text>
-              </Pressable>
-            ) : null}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Account Actions</Text>
 
-            <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("NewHere")}>
-              <Ionicons name="hand-left-outline" size={18} color={colors.text} />
-              <Text style={styles.primaryActionText}>I'm New Here</Text>
-            </Pressable>
-            <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("Testimonies")}>
-              <Ionicons name="sparkles-outline" size={18} color={colors.text} />
-              <Text style={styles.primaryActionText}>Testimonies</Text>
-            </Pressable>
-            {(["ADMIN","SUPER_ADMIN"].includes(String(profile?.role || "").toUpperCase())) ? (
-              <>
-                <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("AdminSettings")}>
-                  <Ionicons name="settings-outline" size={18} color={colors.text} />
-                  <Text style={styles.primaryActionText}>Church Settings</Text>
-                </Pressable>
-                <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("AdminMembers")}>
-                  <Ionicons name="people-outline" size={18} color={colors.text} />
-                  <Text style={styles.primaryActionText}>Manage Members</Text>
-                </Pressable>
-                <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("AdminEvents")}>
-                  <Ionicons name="calendar-outline" size={18} color={colors.text} />
-                  <Text style={styles.primaryActionText}>Manage Events</Text>
-                </Pressable>
-                <Pressable style={styles.primaryAction} onPress={() => navigation.navigate("PlatformAdmin")}>
-                  <Ionicons name="shield-outline" size={18} color={colors.text} />
-                  <Text style={styles.primaryActionText}>Platform Admin</Text>
-                </Pressable>
-              </>
-            ) : null}
-          </GlassCard>
+          <Pressable
+            onPress={handleLogout}
+            disabled={isBusy}
+            style={[styles.primaryButton, isBusy && styles.disabled]}
+          >
+            {busyAction === "logout" ? (
+              <ActivityIndicator color="#041217" />
+            ) : (
+              <Text style={styles.primaryText}>Log Out</Text>
+            )}
+          </Pressable>
 
-          <GlassCard style={styles.section}>
-            <Text style={styles.sectionTitle}>Helpful Note</Text>
-            <Text style={styles.helper}>
-              Deleting your account removes your member login. It does not delete the whole church.
-            </Text>
-          </GlassCard>
-        </ScrollView>
-      </SafeAreaView>
-    </AmbientBackground>
+          <Pressable
+            onPress={handleDeleteAccount}
+            disabled={isBusy}
+            style={[styles.dangerButton, isBusy && styles.disabled]}
+          >
+            {busyAction === "delete" ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.dangerText}>Delete Account</Text>
+            )}
+          </Pressable>
+
+          <Text style={styles.warning}>
+            Delete Account is only for normal member accounts. Admin, owner, pastor, and super admin accounts are blocked from deleting here.
+          </Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
+  safe: { flex: 1, backgroundColor: COLORS.bg },
+  content: { padding: 16, paddingBottom: 120 },
+  card: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 14,
   },
-  container: {
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 140,
-    gap: 14,
-  },
-  statsRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    minHeight: 120,
-    justifyContent: "space-between",
-  },
-  statValue: {
-    color: colors.text,
-    fontSize: 28,
+  title: {
+    color: COLORS.text,
+    fontSize: 24,
     fontWeight: "900",
-    marginTop: 12,
-  },
-  statLabel: {
-    color: colors.textSoft,
-    fontSize: 13,
-    fontWeight: "700",
-    marginTop: 8,
-  },
-  section: {},
-  sectionTitle: {
-    ...typography.h3,
     marginBottom: 8,
   },
-  helper: {
-    ...typography.body,
-    marginBottom: 12,
+  subtitle: {
+    color: COLORS.muted,
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 16,
   },
-  infoRow: {
-    flexDirection: "row",
-    gap: 12,
-    alignItems: "flex-start",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.stroke,
+  sectionTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: "900",
+    marginBottom: 10,
   },
-  infoRowLast: {
-    borderBottomWidth: 0,
-    paddingBottom: 0,
+  infoBlock: {
+    marginTop: 10,
   },
-  infoContent: {
-    flex: 1,
-  },
-  infoLabel: {
-    color: colors.textSoft,
+  label: {
+    color: COLORS.muted,
     fontSize: 12,
     fontWeight: "800",
+    marginBottom: 4,
     textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 6,
   },
-  infoValue: {
-    color: colors.text,
+  value: {
+    color: COLORS.text,
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "800",
   },
-  primaryAction: {
-    minHeight: 54,
-    borderRadius: radius.lg,
+  helper: {
+    color: COLORS.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  rowButton: {
+    minHeight: 62,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.strokeStrong,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    borderColor: COLORS.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    marginTop: 10,
+  },
+  rowTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  rowSubtitle: {
+    color: COLORS.muted,
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  chevron: {
+    color: COLORS.active,
+    fontSize: 28,
+    fontWeight: "700",
+    marginTop: -2,
+  },
+  primaryButton: {
+    minHeight: 56,
+    borderRadius: 999,
+    backgroundColor: COLORS.active,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 8,
-    flexDirection: "row",
-    gap: 10,
   },
-  primaryActionText: {
-    color: colors.text,
+  primaryText: {
+    color: "#041217",
+    fontSize: 17,
     fontWeight: "900",
-    fontSize: 15,
   },
-  dangerAction: {
-    minHeight: 54,
-    borderRadius: radius.lg,
-    backgroundColor: "rgba(255, 59, 48, 0.18)",
+  dangerButton: {
+    minHeight: 56,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(255, 59, 48, 0.35)",
+    borderColor: "rgba(255,107,107,0.35)",
+    backgroundColor: "rgba(255,107,107,0.14)",
     alignItems: "center",
     justifyContent: "center",
     marginTop: 12,
-    flexDirection: "row",
-    gap: 10,
   },
-  dangerActionText: {
-    color: "#ffb3ad",
+  dangerText: {
+    color: COLORS.danger,
+    fontSize: 17,
     fontWeight: "900",
-    fontSize: 15,
   },
-  actionDisabled: {
-    opacity: 0.65,
+  warning: {
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 12,
+    fontWeight: "700",
+  },
+  disabled: {
+    opacity: 0.6,
   },
 });
