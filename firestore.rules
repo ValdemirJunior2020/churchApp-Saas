@@ -33,7 +33,9 @@ service cloud.firestore {
         userDocExists() &&
         (
           currentUserDoc().data.role == "superadmin" ||
-          currentUserDoc().data.role == "platformadmin"
+          currentUserDoc().data.role == "platformadmin" ||
+          currentUserDoc().data.role == "SUPER_ADMIN" ||
+          currentUserDoc().data.role == "SUPERADMIN"
         );
     }
 
@@ -118,14 +120,32 @@ service cloud.firestore {
         allow read: if belongsToChurch(churchId) || isChurchOwner(churchId);
 
         allow create: if belongsToChurch(churchId) &&
-          request.resource.data.uid == request.auth.uid &&
-          request.resource.data.churchId == churchId;
+          request.resource.data.churchId == churchId &&
+          (
+            request.resource.data.uid == request.auth.uid ||
+            request.resource.data.userId == request.auth.uid ||
+            request.resource.data.authorId == request.auth.uid
+          );
 
         allow update: if isChurchOwner(churchId) ||
-          (belongsToChurch(churchId) && resource.data.uid == request.auth.uid);
+          (
+            belongsToChurch(churchId) &&
+            (
+              resource.data.uid == request.auth.uid ||
+              resource.data.userId == request.auth.uid ||
+              resource.data.authorId == request.auth.uid
+            )
+          );
 
         allow delete: if isChurchOwner(churchId) ||
-          (belongsToChurch(churchId) && resource.data.uid == request.auth.uid);
+          (
+            belongsToChurch(churchId) &&
+            (
+              resource.data.uid == request.auth.uid ||
+              resource.data.userId == request.auth.uid ||
+              resource.data.authorId == request.auth.uid
+            )
+          );
       }
 
       match /newGuests/{guestId} {

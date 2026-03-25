@@ -1,4 +1,4 @@
-// src/screens/admin/ChurchAdminSettingsScreen.js
+// File: src/screens/admin/ChurchAdminSettingsScreen.js
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -47,16 +47,11 @@ function linksToText(value) {
   return "";
 }
 
-function extractYoutubeVideoId(url = "") {
+function extractVimeoId(url = "") {
   const value = String(url || "").trim();
   if (!value) return "";
-  const shortMatch = value.match(/youtu\.be\/([^?&/]+)/i);
-  if (shortMatch?.[1]) return shortMatch[1];
-  const longMatch = value.match(/[?&]v=([^?&/]+)/i);
-  if (longMatch?.[1]) return longMatch[1];
-  const embedMatch = value.match(/embed\/([^?&/]+)/i);
-  if (embedMatch?.[1]) return embedMatch[1];
-  return "";
+  const match = value.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+  return match?.[1] || "";
 }
 
 function StatusBanner({ type, text, onClose }) {
@@ -96,7 +91,7 @@ export default function ChurchAdminSettingsScreen() {
   const [churchName, setChurchName] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [backgroundImageUrl, setBackgroundImageUrl] = useState("");
-  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [vimeoUrl, setVimeoUrl] = useState("");
   const [paypalLink, setPaypalLink] = useState("");
   const [zelleInfo, setZelleInfo] = useState("");
   const [cashAppLink, setCashAppLink] = useState("");
@@ -121,7 +116,8 @@ export default function ChurchAdminSettingsScreen() {
       role === "owner" ||
       role === "pastor" ||
       role === "superadmin" ||
-      role === "super_admin"
+      role === "super_admin" ||
+      role === "platformadmin"
     );
   }, [profile?.role]);
 
@@ -157,7 +153,7 @@ export default function ChurchAdminSettingsScreen() {
         setChurchName(data.churchName || "");
         setLogoUrl(data.logoUrl || "");
         setBackgroundImageUrl(data.backgroundImageUrl || "");
-        setYoutubeUrl(data.youtubeUrl || "");
+        setVimeoUrl(data.vimeoUrl || data.youtubeUrl || "");
         setPaypalLink(data.paypalLink || "");
         setZelleInfo(data.zelleInfo || "");
         setCashAppLink(data.cashAppLink || "");
@@ -220,6 +216,11 @@ export default function ChurchAdminSettingsScreen() {
       return;
     }
 
+    if (vimeoUrl.trim() && !extractVimeoId(vimeoUrl)) {
+      showError("Please enter a valid Vimeo URL. Only Vimeo links work for live video.");
+      return;
+    }
+
     try {
       setSaving(true);
       setStatusType("");
@@ -236,8 +237,10 @@ export default function ChurchAdminSettingsScreen() {
         churchName: churchName.trim(),
         logoUrl: logoUrl.trim(),
         backgroundImageUrl: backgroundImageUrl.trim(),
-        youtubeUrl: youtubeUrl.trim(),
-        youtubeVideoId: extractYoutubeVideoId(youtubeUrl),
+        vimeoUrl: vimeoUrl.trim(),
+        vimeoVideoId: extractVimeoId(vimeoUrl),
+        youtubeUrl: "",
+        youtubeVideoId: "",
         paypalLink: paypalLink.trim(),
         zelleInfo: zelleInfo.trim(),
         cashAppLink: cashAppLink.trim(),
@@ -265,7 +268,7 @@ export default function ChurchAdminSettingsScreen() {
           churchName: churchName.trim(),
           logoUrl: logoUrl.trim(),
           backgroundImageUrl: backgroundImageUrl.trim(),
-          youtubeUrl: youtubeUrl.trim(),
+          vimeoUrl: vimeoUrl.trim(),
         }));
       }
 
@@ -316,7 +319,7 @@ export default function ChurchAdminSettingsScreen() {
             </View>
             <Text style={styles.title}>Church Admin Settings</Text>
             <Text style={styles.sub}>
-              Update your church branding, giving options, live stream, and contact information.
+              Update your church branding, giving options, Vimeo live stream, and contact information.
             </Text>
           </View>
 
@@ -356,18 +359,18 @@ export default function ChurchAdminSettingsScreen() {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Live Stream</Text>
 
-            <Text style={styles.label}>YouTube Live URL</Text>
+            <Text style={styles.label}>Vimeo Live URL</Text>
             <TextInput
               style={styles.input}
-              value={youtubeUrl}
-              onChangeText={setYoutubeUrl}
-              placeholder="https://youtube.com/watch?v=..."
+              value={vimeoUrl}
+              onChangeText={setVimeoUrl}
+              placeholder="https://vimeo.com/123456789"
               placeholderTextColor="rgba(255,255,255,0.45)"
               autoCapitalize="none"
             />
 
             <Text style={styles.helper}>
-              Paste the full YouTube live link. The app will automatically try to extract the video ID.
+              Only Vimeo links work for live video in this app right now.
             </Text>
           </View>
 
@@ -532,10 +535,6 @@ export default function ChurchAdminSettingsScreen() {
               </>
             )}
           </Pressable>
-
-          <Text style={styles.bottomHelp}>
-            From now on, every save should show both a visible banner and a popup confirmation.
-          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -543,30 +542,11 @@ export default function ChurchAdminSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  flex: {
-    flex: 1,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  loadingText: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  container: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 140,
-    gap: 14,
-  },
+  safe: { flex: 1, backgroundColor: COLORS.bg },
+  flex: { flex: 1 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+  loadingText: { color: COLORS.text, fontSize: 15, fontWeight: "800" },
+  container: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 140, gap: 14 },
   banner: {
     minHeight: 52,
     borderRadius: 18,
@@ -577,21 +557,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  successBanner: {
-    backgroundColor: COLORS.successBg,
-    borderColor: COLORS.successBorder,
-  },
-  errorBanner: {
-    backgroundColor: COLORS.errorBg,
-    borderColor: COLORS.errorBorder,
-  },
-  bannerText: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: "800",
-    flex: 1,
-    lineHeight: 20,
-  },
+  successBanner: { backgroundColor: COLORS.successBg, borderColor: COLORS.successBorder },
+  errorBanner: { backgroundColor: COLORS.errorBg, borderColor: COLORS.errorBorder },
+  bannerText: { color: COLORS.text, fontSize: 14, fontWeight: "800", flex: 1, lineHeight: 20 },
   heroCard: {
     backgroundColor: COLORS.card,
     borderRadius: 24,
@@ -611,19 +579,8 @@ const styles = StyleSheet.create({
     borderColor: "rgba(46,216,243,0.25)",
     marginBottom: 14,
   },
-  title: {
-    color: COLORS.text,
-    fontSize: 26,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  sub: {
-    color: COLORS.muted,
-    fontSize: 15,
-    textAlign: "center",
-    marginTop: 8,
-    lineHeight: 22,
-  },
+  title: { color: COLORS.text, fontSize: 26, fontWeight: "900", textAlign: "center" },
+  sub: { color: COLORS.muted, fontSize: 15, textAlign: "center", marginTop: 8, lineHeight: 22 },
   card: {
     backgroundColor: COLORS.card,
     borderRadius: 24,
@@ -631,12 +588,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     padding: 18,
   },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: 20,
-    fontWeight: "900",
-    marginBottom: 10,
-  },
+  sectionTitle: { color: COLORS.text, fontSize: 20, fontWeight: "900", marginBottom: 10 },
   label: {
     color: COLORS.muted,
     fontSize: 12,
@@ -656,17 +608,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     fontSize: 15,
   },
-  textarea: {
-    minHeight: 110,
-    paddingTop: 14,
-  },
-  helper: {
-    color: COLORS.warning,
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: "700",
-    marginTop: 10,
-  },
+  textarea: { minHeight: 110, paddingTop: 14 },
+  helper: { color: COLORS.warning, fontSize: 12, lineHeight: 18, fontWeight: "700", marginTop: 10 },
   saveButton: {
     minHeight: 56,
     borderRadius: 999,
@@ -676,18 +619,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  saveText: {
-    color: "#041217",
-    fontWeight: "900",
-    fontSize: 16,
-  },
-  disabled: {
-    opacity: 0.6,
-  },
-  bottomHelp: {
-    color: COLORS.muted,
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: "700",
-  },
+  saveText: { color: "#041217", fontWeight: "900", fontSize: 16 },
+  disabled: { opacity: 0.6 },
 });
