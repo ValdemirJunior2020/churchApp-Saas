@@ -34,9 +34,9 @@
     },
     "extra": {
       "revenueCat": {
-        "iosPublicSdkKey": "appl_REPLACE_LATER",
+        "iosPublicSdkKey": "appl_LdOWoaTmSPGVSGdJqKsYfZQOPjF",
         "androidPublicSdkKey": "goog_REPLACE_LATER",
-        "entitlementId": "pro"
+        "entitlementId": "Congregate Pro"
       },
       "eas": {
         "projectId": "5654f97c-0a92-4c40-9b4a-491182744880"
